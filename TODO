@@ -1,0 +1,51 @@
+My Random TODO list for the zombie game.
+========================================
+
+Fixe the bug where the textures don't work.
+
+Allow for indefinate amount of music tracks and detect when there are no more (like i do for the levels).
+
+Auto generate a texture with the walls on it for each level when loading a level.
+   This will save on resources so the calculations for each wall aren't done on each frame.
+
+Have an over world map and allow people to pick up where they left off since last playing the game.
+
+Insert uppercase letters in SDL
+
+Load splash logo in data_interface render and directions and credits
+
+String length check on USERDATA to start game
+
+DONE Load a different background for each level. -- Think of a png file that can be generated for each level.
+
+DONE When open level to test it, skip all the database stuff.
+
+DONE Use the mouse to move the hero, not just keyboard.
+
+DONE Add sound!!
+
+DONE Add walls??  Some how make the game interesting and more playable.
+
+DONE Add scoring; time level took to complete over the number of Zombies 
+saved.
+
+DONE Display the number of people a person has to save in a level.
+
+DONE Allow the hero to resue other people after he has completed the save 
+count.
+
+DONE Have a message saying, if you wish to continue type ' '.
+
+DONE Add different accounts.  Look into sqlite3 to do this.
+
+# Ideas #
+Power-ups:
+	killing ball
+	antidote ball
+	-invincibility-
+	
+AI
+	crowd stuff
+	path following
+	guarding
+	
