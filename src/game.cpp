@@ -1,3 +1,11 @@
+/*
+ * Box2D todo; 
+ *   - Sound plays at the right location - not just load locations
+ *   - get ai working right
+ *   - make body between joints so chain can't go through walls
+ *   - joint remove at a given index - not just all at once
+ *   - fix bug where touch two peopel at once game crashes, because of null pointer.
+ */
 #include <stdlib.h>
 #include <stdio.h>
 #include <math.h>
@@ -50,12 +58,67 @@
 
 void gm_update_view(game gm, b2Vec2 center);
 
-const uint16 k_oport_cat = 0x0002;
-const uint16 k_cport_cat = 0x0001;
-const uint16 k_port_mask = 0x0002;
+//Collision Filtering Zombies
 
-const uint16 k_hero_cat = 0x0001;
-const uint16 k_hero_mask = 0x0001;
+const uint16 k_hero_cat = 0x0002;
+const uint16 k_safe_person_cat = 0x0003;
+const uint16 k_chain_person_cat = 0x0004;
+const uint16 k_person_cat = 0x0005;
+const uint16 k_zombie_cat = 0x0006;
+const uint16 k_safe_zone_cage_cat = 0x0007;
+const uint16 k_safe_zone_sensor_cat = 0x0008;
+const uint16 k_open_portal_cat = 0x0009;
+const uint16 k_open_portal_sensor_cat = 0x000A;
+const uint16 k_closed_portal_cat = 0x000B;
+const uint16 k_walls_cat = 0x000C;
+
+const uint16 k_hero_mask = k_hero_cat | 
+                           k_safe_person_cat | 
+                           k_chain_person_cat | 
+                           k_person_cat | 
+                           k_zombie_cat | 
+                           k_safe_zone_sensor_cat | 
+                           k_open_portal_sensor_cat | 
+                           k_closed_portal_cat | 
+                           k_walls_cat;
+
+const uint16 k_safe_person_mask = k_safe_person_cat | 
+    k_chain_person_cat | 
+    k_person_cat | 
+    k_safe_zone_cage_cat | 
+    k_closed_portal_cat | 
+    k_walls_cat;
+
+const uint16 k_chain_person_mask = k_hero_cat | 
+    k_safe_person_cat | 
+    k_chain_person_cat | 
+    k_person_cat | 
+    k_zombie_cat | 
+    k_safe_zone_sensor_cat | 
+    k_closed_portal_cat | 
+    k_walls_cat;
+
+const uint16 k_person_mask = k_hero_cat | 
+    k_safe_person_cat | 
+    k_chain_person_cat | 
+    k_person_cat | 
+    k_zombie_cat | 
+    k_safe_zone_cage_cat | 
+    k_closed_portal_cat | 
+    k_walls_cat;
+
+const uint16 k_zombie_mask = k_person_mask;
+
+const uint16 k_safe_zone_cage_mask = k_person_cat;
+
+const uint16 k_safe_zone_sensor_mask = k_hero_cat | k_chain_person_cat;
+
+const uint16 k_open_portal_sensor_mask = k_hero_cat;
+const uint16 k_open_portal_mask = 0;
+
+const uint16 k_closed_portal_mask = k_hero_cat | k_safe_person_cat | k_chain_person_cat | k_person_cat | k_zombie_cat;
+
+const uint16 k_walls_mask = k_hero_cat | k_safe_person_cat | k_chain_person_cat | k_person_cat | k_zombie_cat;
 
 enum{
     al_saved1_buf,
@@ -95,6 +158,8 @@ enum{
     gl_num
 };
 
+
+
 //A dummy type to cast to 
 //to check what the pointer is 
 //pointing to
@@ -107,6 +172,15 @@ typedef struct {
 
 typedef struct {
     int whoami;
+    object o;
+    float tr;
+    int sensor_touch;
+	b2Body* bod;
+	b2Body* cage;
+} _safe_zone; //actor_type
+
+typedef struct {
+    int whoami;
 	object o;
 	float timer;
 	int state; 
@@ -116,7 +190,6 @@ typedef struct {
 
     int chase;
     int parent_id;
-
 
 	b2Body* bod;
 } ppl;
@@ -145,6 +218,21 @@ typedef struct {
     int open;
     b2Body * bod;
 } _portal;
+
+
+typedef struct {
+    int num;
+    int ppl[100];
+    b2Body * links[100];
+    b2Joint * jt[100];
+
+    int make_q[100];
+    int qnum;
+
+    b2Joint * delete_q[100];
+    int dnum;
+} _chain;
+
 
 typedef struct {
     object n[STINK_PARTICLE_NUM];
@@ -181,11 +269,13 @@ typedef struct gametype {
 	ppl person[100]; //Zombies and people array
 	int person_num; //How many there are
 	_hero hero;
-	int ppl_chain[100];
-	int chain_num;
-	object safe_zone;
-    b2Body * bod_safe_zone;
+
+    //Keeps track of who is in the hero chain
+    _chain chain;
+
+	_safe_zone safe_zone;
 	int save_count;  //How many people you have to save to win the level
+
 	line walls[1000];
 	int wall_num;
 
@@ -201,11 +291,16 @@ typedef struct gametype {
 
     int gm_state;
 
+    //Sound
 	ALuint buf[al_buf_num];
     s_list saved_src;
 	
+    //Textures
 	GLuint h_tex[gl_num];
 
+
+    //Make move these to an array like above
+    //figured that out after did this.
 	GLuint zombie_tex;
 	GLuint person_tex;
 	GLuint safe_tex;
@@ -242,8 +337,9 @@ void chain_cut(game gm, int index);
 void stink_add(game gm, int id);
 void stink_step(game gm, double dt);
 void stink_render(game gm);
-void zb_chase_hero(game gm);
+void ai_functions(game gm);
 void gm_update_mouse(game gm);
+void draw_line(b2Vec2 p1, b2Vec2 p2, GLuint tex);
 
 
 game gm_init(char * res_path){
@@ -293,7 +389,7 @@ int gm_init_textures(game gm){
     load_texture(gm->res_buf, &gm->person_tex);
 
     strcpy(gm->res_buf, gm->res_path);
-    strcat(gm->res_buf, "/imgs/safe.png");
+    strcat(gm->res_buf, "/imgs/extra.png");
     load_texture(gm->res_buf, &gm->safe_tex);
 
     strcpy(gm->res_buf, gm->res_path);
@@ -533,11 +629,43 @@ void gm_update(game gm, int width, int height, double dt){
         s_add_snd(gm->saved_src, gm->buf[al_p_z_buf], &gm->hero.o, 0.1, 1);
 	}
 
-    //Box2d stuff
+    //NRG Timer for hero
+    if(gm->hero.nrg < 25){
+        gm->n = 0;
+    }
+    else if(gm->n && gm->hero.nrg > 25){
+        gm->hero.nrg -= dt*10.0f;
+    }
+    if(gm->hero.nrg < 100 && gm->hero.state == PERSON){
+        gm->hero.nrg += dt*5;
+    }
 
-	b2Vec2 f = gm->hero.bod->GetWorldVector(b2Vec2(gm->ak.x*200.0f, gm->ak.y*200.0f));
-	b2Vec2 p = gm->hero.bod->GetWorldPoint(b2Vec2(0.0f, 0.0f));
+    if(gm->hero.nrg < 0 && gm->hero.state == PERSON){
+        gm->hero.nrg = 0;
+        gm->hero.spring_state = NOT_ATTACHED;
+        gm->hero.timer = MAX_TIME;
+        b2Filter flt;
+        flt.categoryBits = k_person_cat;
+        flt.maskBits = k_person_mask;
+        gm->hero.bod->GetFixtureList()->SetFilterData(flt);
+        gm->hero.state = P_Z;
+        chain_ready_zero(gm);
+        s_add_snd(gm->saved_src, gm->buf[al_hdeath_buf], &gm->hero.o,0.1, 1);
+    }
+
+
+    //Ai Stuff
+    //ai_functions(gm);
+
+
+    //Box2d stuff
+    float hf = (gm->n)?300:100;
+
+	b2Vec2 f(gm->ak.x*hf, gm->ak.y*hf);
+	b2Vec2 p = gm->hero.bod->GetPosition();
+
 	gm->hero.bod->ApplyForce(f, p);
+
 
 	for(i=0; i<gm->person_num; i++){
         p = gm->person[i].bod->GetPosition();
@@ -548,9 +676,96 @@ void gm_update(game gm, int width, int height, double dt){
 
     }
 
+    gm->chain.qnum = 0;
+    gm->chain.dnum = 0;
+
+
 	gm->m_world->Step(dt, 8, 3);
+
+    //CHeck for joints to create
+    for(i = 0; i < gm->chain.qnum; i++){
+        int num = gm->chain.make_q[i];
+        b2Vec2 p1, p2;
+        p1 = gm->hero.bod->GetPosition();
+        p2 = gm->person[num].bod->GetPosition();
+
+        b2PolygonShape shape;
+        shape.SetAsBox(5.0f, 0.125f);
+
+        b2FixtureDef fd;
+        fd.shape = &shape;
+        fd.density = 0.2f;
+        fd.friction = 0.2f;
+
+        b2RevoluteJointDef jd;
+
+        b2BodyDef bd;
+        bd.type = b2_dynamicBody;
+        bd.position.Set((p2.x - p1.x)/2.0f+p1.x, (p2.y - p1.y)/2.0f+p1.y);
+        b2Body * link = gm->m_world->CreateBody(&bd);
+        gm->chain.links[gm->chain.num-1] = link;
+        link->CreateFixture(&fd);
+
+        b2Vec2 anchor(p1.x, p1.y);
+        jd.Initialize(gm->hero.bod, link, anchor);
+        gm->m_world->CreateJoint(&jd);     
+
+        anchor.x = p2.x; anchor.y = p2.y;
+        jd.Initialize(gm->person[num].bod, link, anchor);
+        gm->m_world->CreateJoint(&jd);     
+    }
+
+    //Check for joints to destroy
+    /*
+    for(i = 0; i < gm->chain.dnum; i++){
+      gm->m_world->DestroyJoint(gm->chain.delete_q[i]);
+    }
+    */
+
+
+    //Check to see if safe zone sensor is active
+    if(gm->safe_zone.sensor_touch > 0){
+        b2ContactEdge * SensorContact = gm->safe_zone.bod->GetContactList();
+		
+        while(SensorContact != NULL){
+            actor_type * actor = (actor_type*)SensorContact->other->GetFixtureList()->GetUserData();
+            if(actor->whoami == t_person){
+                ppl * person = (ppl*)actor;
+                _safe_zone * safe_zone = &gm->safe_zone;
+                if(person->state == PERSON){
+                    if((person->bod->GetPosition() - safe_zone->bod->GetPosition()).LengthSquared() < (safe_zone->tr - person->o.r)*(safe_zone->tr - person->o.r)){
+                        b2Filter flt;
+                        flt.categoryBits = k_person_cat;
+                        flt.maskBits = k_person_mask;
+                        person->bod->GetFixtureList()->SetFilterData(flt);
+                        person->state = SAFE;
+                    }
+                }
+                else if(person->state == P_Z || person->state == ZOMBIE){
+                    b2Vec2 pp = person->bod->GetPosition();
+                    b2Vec2 sp = safe_zone->bod->GetPosition();
+                    person->bod->ApplyForce(pp-sp, pp);
+                }
+            }
+            else if(actor->whoami == t_hero){
+                _hero * person = (_hero*)actor;
+                _safe_zone * safe_zone = &gm->safe_zone;
+                printf("SZ: %.2f\n", (person->bod->GetPosition() - safe_zone->bod->GetPosition()).Length());
+
+                if((person->bod->GetPosition() - safe_zone->bod->GetPosition()).LengthSquared() < 
+                        (safe_zone->tr - person->o.r)*(safe_zone->tr - person->o.r) && person->state != DONE){
+                    person->state = SAFE;
+                }
+                else if(person->state == SAFE){
+                    person->state = PERSON;
+                }
+            }
+            SensorContact = SensorContact->next;
+        }
+
+    }
 	
-	/*Advances our view level */
+	/*Advances our view box when zooming in and out */
 	double ratio = (double)width/(double)height; 
 	vector2 w = {gm->viewratio, gm->viewratio};
 	w.x = ratio * w.y;
@@ -568,6 +783,7 @@ void gm_update(game gm, int width, int height, double dt){
 	
 	gm_update_mouse(gm);
 }
+
 
 void gm_render(game gm){
 	b2Vec2 center = gm->hero.bod->GetPosition();
@@ -588,8 +804,8 @@ void gm_render(game gm){
 		
 	glBindTexture( GL_TEXTURE_2D, gm->safezone_tex);
 	glPushMatrix();
-	glTranslatef(gm->safe_zone.p.x, gm->safe_zone.p.y, 0);
-	glScalef(gm->safe_zone.r, gm->safe_zone.r,0);
+	glTranslatef(gm->safe_zone.o.p.x, gm->safe_zone.o.p.y, 0);
+	glScalef(gm->safe_zone.o.r, gm->safe_zone.o.r,0);
 	glBegin(GL_QUADS);
 	glTexCoord2f(0.0, 0.0);
 	glVertex3f(-1.0, -1.0, 0.0);
@@ -663,92 +879,60 @@ void gm_render(game gm){
     }
 
 	for(i = 0; i<gm->wall_num; i++){
-		glBindTexture( GL_TEXTURE_2D, gm->rope_tex);
-		glPushMatrix();
-		glBegin(GL_QUADS);
 		
-		vector2 p1,p2;
-		p1 = gm->walls[i].p1;
-		p2 = gm->walls[i].p2;
-		vector2 temp;
+        b2Vec2 pt1,pt2;
 
-		glTexCoord2f(1.0, 0.0);
-		temp = v2Add(p1, v2sMul(2.0, v2Unit(v2Rotate(M_PI/2, v2Sub(p2,p1)))));
-		glVertex3f(temp.x, temp.y, 0.0);
+		pt1.x = gm->walls[i].p1.x;
+		pt1.y = gm->walls[i].p1.y;
+		pt2.x = gm->walls[i].p2.x;
+		pt2.y = gm->walls[i].p2.y;
 
-		glTexCoord2f(0.0, 0.0);
-		temp = v2Add(p1, v2sMul(2.0, v2Unit(v2Rotate(-M_PI/2, v2Sub(p2,p1)))));
-		glVertex3f(temp.x, temp.y, 0.0);
+        draw_line(pt1,pt2,gm->rope_tex);
 
-		glTexCoord2f(0.0, 1.0);
-		temp = v2Add(p2, v2sMul(2.0, v2Unit(v2Rotate(-M_PI/2, v2Sub(p2,p1)))));
-		glVertex3f(temp.x, temp.y, 0.0);
 
-		glTexCoord2f(1.0, 1.0);
-		temp = v2Add(p2, v2sMul(2.0, v2Unit(v2Rotate(M_PI/2, v2Sub(p2,p1)))));
-		glVertex3f(temp.x, temp.y, 0.0);
-
-		glEnd();
-		glPopMatrix();
 	}
 	
-	if(gm->chain_num > 0){
-		i = gm->ppl_chain[gm->chain_num-1];
-		glBindTexture( GL_TEXTURE_2D, gm->rope_tex);
-		glPushMatrix();
-		glBegin(GL_QUADS);
-		
-		vector2 p1,p2;
-		p1 = v2Add(gm->person[i].o.p, v2sMul(gm->person[i].o.r, v2Unit(v2Sub(gm->hero.o.p, gm->person[i].o.p))));
-		p2 = v2Add(gm->hero.o.p, v2sMul(gm->hero.o.r, v2Unit(v2Sub(gm->person[i].o.p, gm->hero.o.p))));
+	if(gm->chain.num > 0){
+		i = gm->chain.ppl[gm->chain.num-1];
+        b2Vec2 hp, pp, pp1, pp2, tt, ttt;
+        hp = gm->hero.bod->GetPosition();
+        pp = gm->person[i].bod->GetPosition();
 
-		glTexCoord2f(1.0, 0.0);
-		vector2 temp = v2Add(p1, v2sMul(2.0, v2Unit(v2Rotate(M_PI/2, v2Sub(gm->person[i].o.p, gm->hero.o.p)))));
-		glVertex3f(temp.x, temp.y, 0.0);
+        pp1 = hp - pp;
+        pp1.Normalize();
+        pp1 *= gm->person[i].o.r;
+        pp1 += pp;
 
-		glTexCoord2f(0.0, 0.0);
-		temp = v2Add(p1, v2sMul(2.0, v2Unit(v2Rotate(-M_PI/2, v2Sub(gm->person[i].o.p, gm->hero.o.p)))));
-		glVertex3f(temp.x, temp.y, 0.0);
+        pp2 = pp - hp;
+        pp2.Normalize();
+        pp2 *= gm->hero.o.r;
+        pp2 += hp;
+        draw_line(pp1,pp2,gm->rope_tex);
 
-		glTexCoord2f(0.0, 1.0);
-		temp = v2Add(p2, v2sMul(2.0, v2Unit(v2Rotate(-M_PI/2, v2Sub(gm->person[i].o.p, gm->hero.o.p)))));
-		glVertex3f(temp.x, temp.y, 0.0);
-
-		glTexCoord2f(1.0, 1.0);
-		temp = v2Add(p2, v2sMul(2.0, v2Unit(v2Rotate(M_PI/2, v2Sub(gm->person[i].o.p, gm->hero.o.p)))));
-		glVertex3f(temp.x, temp.y, 0.0);
-
-		glEnd();
-		glPopMatrix();
 		int k;
-		for(k = gm->chain_num-1; k > 0; k--){
-			i = gm->ppl_chain[k];
-			int h = gm->ppl_chain[k-1];
-			glPushMatrix();
-			glBegin(GL_QUADS);
+		for(k = gm->chain.num-1; k > 0; k--){
+			i = gm->chain.ppl[k];
+			int h = gm->chain.ppl[k-1];
 
+            hp = gm->person[i].bod->GetPosition();
+            pp = gm->person[h].bod->GetPosition();
+
+            pp1 = hp - pp;
+            pp1.Normalize();
+            pp1 *= gm->person[h].o.r;
+            pp1 += pp;
+
+            pp2 = pp - hp;
+            pp2.Normalize();
+            pp2 *= gm->person[i].o.r;
+            pp2 += hp;
+            draw_line(pp1,pp2,gm->rope_tex);
+
+            /*
 			vector2 p1,p2;
 			p1 = v2Add(gm->person[i].o.p, v2sMul(gm->person[i].o.r, v2Unit(v2Sub(gm->person[h].o.p, gm->person[i].o.p))));
 			p2 = v2Add(gm->person[h].o.p, v2sMul(gm->person[h].o.r, v2Unit(v2Sub(gm->person[i].o.p, gm->person[h].o.p))));
-
-			glTexCoord2f(1.0, 0.0);
-			vector2 temp = v2Add(p1, v2sMul(2.0, v2Unit(v2Rotate(M_PI/2, v2Sub(gm->person[i].o.p, gm->person[h].o.p)))));
-			glVertex3f(temp.x, temp.y, 0.0);
-
-			glTexCoord2f(0.0, 0.0);
-			temp = v2Add(p1, v2sMul(2.0, v2Unit(v2Rotate(-M_PI/2, v2Sub(gm->person[i].o.p, gm->person[h].o.p)))));
-			glVertex3f(temp.x, temp.y, 0.0);
-
-			glTexCoord2f(0.0, 1.0);
-			temp = v2Add(p2, v2sMul(2.0, v2Unit(v2Rotate(-M_PI/2, v2Sub(gm->person[i].o.p, gm->person[h].o.p)))));
-			glVertex3f(temp.x, temp.y, 0.0);
-
-			glTexCoord2f(1.0, 1.0);
-			temp = v2Add(p2, v2sMul(2.0, v2Unit(v2Rotate(M_PI/2, v2Sub(gm->person[i].o.p, gm->person[h].o.p)))));
-			glVertex3f(temp.x, temp.y, 0.0);
-
-			glEnd();
-			glPopMatrix();
+            */
 		}
 	}
 
@@ -849,50 +1033,6 @@ void gm_render(game gm){
 		glEnd();
 		glPopMatrix();
 		
-		if(gm->person[i].state == SAFE){
-			vector2 ep;
-			ep.x = gm->person[i].o.p.x + 20.0f/64.0f*gm->person[i].o.r;
-			ep.y = gm->person[i].o.p.y + 18.0f/64.0f*gm->person[i].o.r;
-			
-			ep = v2Add(ep, v2sMul(5.0f/64.0f*gm->person[i].o.r, v2Unit(v2Sub(gm->hero.o.p, ep))));
-			
-			glBindTexture( GL_TEXTURE_2D, gm->eye_tex);
-			glPushMatrix();
-			
-			glTranslatef(ep.x, ep.y, 0);
-			glScalef(gm->person[i].o.r, gm->person[i].o.r,0);
-			glBegin(GL_QUADS);
-			glTexCoord2f(0.0, 0.0);
-			glVertex3f(-1.0, -1.0, 0.0);
-			glTexCoord2f(0.0, 1.0);
-			glVertex3f(-1.0, 1.0, 0.0);
-			glTexCoord2f(1.0, 1.0);
-			glVertex3f(1.0, 1.0, 0.0);
-			glTexCoord2f(1.0, 0.0);
-			glVertex3f(1.0, -1.0, 0.0);
-			glEnd();
-			glPopMatrix();
-			
-			ep.x = gm->person[i].o.p.x - 23.0f/64.0f*gm->person[i].o.r;
-			ep.y = gm->person[i].o.p.y + 19.0f/64.0f*gm->person[i].o.r;
-			
-			ep = v2Add(ep, v2sMul(5.0f/64.0f*gm->person[i].o.r, v2Unit(v2Sub(gm->hero.o.p, ep))));
-			
-			glPushMatrix();
-			glTranslatef(ep.x, ep.y, 0);
-			glScalef(gm->person[i].o.r, gm->person[i].o.r,0);
-			glBegin(GL_QUADS);
-			glTexCoord2f(0.0, 0.0);
-			glVertex3f(-1.0, -1.0, 0.0);
-			glTexCoord2f(0.0, 1.0);
-			glVertex3f(-1.0, 1.0, 0.0);
-			glTexCoord2f(1.0, 1.0);
-			glVertex3f(1.0, 1.0, 0.0);
-			glTexCoord2f(1.0, 0.0);
-			glVertex3f(1.0, -1.0, 0.0);
-			glEnd();
-			glPopMatrix();
-		}
 	}
 }
 
@@ -970,7 +1110,7 @@ void gm_message_render(game gm, int width, int height){
 
 	
 	/*
-    sprintf(buf, "Chain Num: %d", gm->chain_num);	
+    sprintf(buf, "Chain Num: %d", gm->chain.num);	
     len = rat_font_text_length(gm->font, buf);
     rat_font_render_text(gm->font, width - 250,height-4, buf);
 	*/
@@ -1065,6 +1205,10 @@ int gm_progress(game gm){
 	if((add >= gm->save_count && gm->hero.state == SAFE && gm->c == 1) ||
         (person == 0 && add >= gm->save_count && gm->hero.state == SAFE)){
 		gm->hero.state = DONE;
+        b2Filter flt;
+        flt.categoryBits = k_person_cat;
+        flt.maskBits = k_person_mask;
+        gm->hero.bod->GetFixtureList()->SetFilterData(flt);
 		return add - gm->save_count + 1;
 	}
 	
@@ -1080,14 +1224,12 @@ void gm_mouse(game gm, int x, int y){
 	gm->mpy = y;
 }
 
-object gm_get_hero(game gm){
-    return gm->hero.o;
+b2Vec2 gm_get_hero(game gm){
+    return gm->hero.bod->GetPosition();
 }
 
-void gm_set_hero(game gm, object hero){
-    gm->hero.o = hero;
-    gm->hero.o.v.x = 0;
-    gm->hero.o.v.y = 0;
+void gm_set_hero(game gm, b2Vec2 hero){
+    gm->hero.bod->SetTransform(hero, 0);
 }
 
 void gm_update_mouse(game gm){
@@ -1110,7 +1252,6 @@ void gm_nkey_down(game gm, unsigned char key){
 			
 		case ' ':
 			chain_ready_zero(gm);
-			gm->chain_num = 0;
             gm->c = 1;
 			gm->hero.spring_state = NOT_ATTACHED;
 			break;
@@ -1212,12 +1353,12 @@ void gm_check_portals(game gm, int save_count){
         if(gm->portal[i].save_count > save_count){
             gm->portal[i].open = 0;
             b2Filter flt;
-            flt.categoryBits = k_hero_cat;
-            flt.maskBits = k_hero_mask;
+            flt.categoryBits = k_open_portal_sensor_cat;
+            flt.maskBits = k_open_portal_sensor_mask;
             flt.groupIndex = 0;
             gm->portal[i].bod->GetFixtureList()->GetNext()->SetFilterData(flt);
-            flt.categoryBits = k_oport_cat;
-            flt.maskBits = k_port_mask;
+            flt.categoryBits = k_open_portal_cat;
+            flt.maskBits = k_open_portal_mask;
             gm->portal[i].bod->GetFixtureList()->SetFilterData(flt);
         }else{
             gm->portal[i].open = 1;
@@ -1229,47 +1370,55 @@ void gm_check_portals(game gm, int save_count){
 void chain_remove(game gm, int index){
 	int k;
 	int match;
-	for(k = 0; k < gm->chain_num; k++){
-		if(gm->ppl_chain[k] == index){
+	for(k = 0; k < gm->chain.num; k++){
+		if(gm->chain.ppl[k] == index){
 			match = k;
 			break;
 		}
 	}
-	for(k = match; k < gm->chain_num; k++){
-		gm->ppl_chain[k] = gm->ppl_chain[k+1];
+	for(k = match; k < gm->chain.num; k++){
+		gm->chain.ppl[k] = gm->chain.ppl[k+1];
 	}
-	gm->chain_num--;
+	gm->chain.num--;
 }
 
 void chain_cut(game gm, int index){
 	int k;
 	int match = -1;
-	for(k = 0; k < gm->chain_num; k++){
-		if(gm->ppl_chain[k] == index){
+	for(k = 0; k < gm->chain.num; k++){
+		if(gm->chain.ppl[k] == index){
 			match = k;
 			break;
 		}
 	}
 	if(match == -1){return;}
     for(k = match; k >= 0; k--){
-        int temp = gm->ppl_chain[k];
+        int temp = gm->chain.ppl[k];
         gm->person[temp].ready = 0;
+        gm->chain.delete_q[gm->chain.dnum] = gm->chain.jt[k];
+        gm->chain.jt[k] = NULL;
+        gm->chain.dnum++;
     }
-    gm->chain_num = gm->chain_num - match - 1;
-    for(k = 0; k < gm->chain_num; k++){
-        gm->ppl_chain[k] = gm->ppl_chain[k + match + 1];
+    gm->chain.num = gm->chain.num - match - 1;
+    for(k = 0; k < gm->chain.num; k++){
+        gm->chain.ppl[k] = gm->chain.ppl[k + match + 1];
+        gm->chain.jt[k] = gm->chain.jt[k + match + 1];
     }
-    if(gm->chain_num == 0){
+    if(gm->chain.num == 0){
         gm->hero.spring_state = NOT_ATTACHED;
     }
 }
 
 void chain_ready_zero(game gm){
 	int k;
-	for(k = 0; k < gm->chain_num; k++){
-		int h = gm->ppl_chain[k];
+	for(k = 0; k < gm->chain.num; k++){
+		int h = gm->chain.ppl[k];
+        if(gm->chain.jt[k] != NULL){
+            //gm->m_world->DestroyJoint(gm->chain.jt[k]);
+        }
 		gm->person[h].ready = 0;
 	}
+    gm->chain.num = 0;
 }
 
 
@@ -1343,7 +1492,7 @@ void stink_render(game gm){
 }
 
 
-void zb_chase_hero(game gm){
+void ai_functions(game gm){
     int k;
     for(k=0; k < gm->person_num; k++){
         if(gm->person[k].state == ZOMBIE && gm->person[k].chase == 0 && gm->person[k].o.r > 2){
@@ -1414,7 +1563,7 @@ void gm_portal_ct(game gm, int user_id){
 }
 
 int gm_load_level_svg(game gm, char * file_path){
-    bool fix_rotation = true;
+    bool fix_rotation = false;
     float damping = 1;
 
     //Going to load stuff in b2 world
@@ -1455,11 +1604,11 @@ int gm_load_level_svg(game gm, char * file_path){
 	gm->ak.y = 0;
     gm->c = 0;
 
-    gm->chain_num = 0;
+    gm->chain.num = 0;
     
-    gm->safe_zone.m = 1000;
-    gm->safe_zone.v.x = 0;
-    gm->safe_zone.v.y = 0;
+    gm->safe_zone.o.m = 1000;
+    gm->safe_zone.o.v.x = 0;
+    gm->safe_zone.o.v.y = 0;
     gm->person_num = 0;
     gm->wall_num = 0;
     gm->portal_num = 0;
@@ -1481,7 +1630,8 @@ int gm_load_level_svg(game gm, char * file_path){
         b2FixtureDef fd;
         fd.shape = &shape;
         fd.density = 0.0f;
-        fd.friction = 1.0f;
+        fd.friction = 0.5f;
+        fd.restitution = 0.2f;
         shape.Set(b2Vec2(0.0f, 0.0f), b2Vec2(0.0f, gm->h));
         ground->CreateFixture(&fd);
         shape.Set(b2Vec2(0.0f, gm->h), b2Vec2(gm->w, gm->h));
@@ -1526,9 +1676,46 @@ int gm_load_level_svg(game gm, char * file_path){
 
             const char *color=mxmlElementGetAttr(node, "fill");
             if(strcmp(color, "#e5e5e5") == 0){
-                gm->safe_zone.p.x = cx;
-                gm->safe_zone.p.y = cy;
-                gm->safe_zone.r = r;
+                gm->safe_zone.o.p.x = cx;
+                gm->safe_zone.o.p.y = cy;
+                gm->safe_zone.o.r = r;
+                gm->safe_zone.tr = r*cos(M_PI/6.0f);
+                gm->safe_zone.whoami = t_safezone;
+                gm->safe_zone.sensor_touch = 0;
+
+                b2Vec2 pos(cx,cy);
+                b2BodyDef bd;
+                bd.position = pos;
+                gm->safe_zone.bod = gm->m_world->CreateBody(&bd);
+                b2CircleShape circle;
+                circle.m_radius = r;
+                b2FixtureDef fd;
+                fd.shape = &circle;
+                fd.restitution = 0.5f;
+                fd.friction = 0.2f;
+                fd.filter.categoryBits = k_safe_zone_sensor_cat;
+                fd.filter.maskBits = k_safe_zone_sensor_mask;
+                fd.isSensor = true;
+                fd.userData = &gm->safe_zone;
+                gm->safe_zone.bod->CreateFixture(&fd);
+
+
+                gm->safe_zone.cage = gm->m_world->CreateBody(&bd);
+                b2EdgeShape shape;
+                fd.userData = NULL;
+                fd.shape = &shape;
+                fd.isSensor = false;
+                fd.density = 0.0f;
+                fd.friction = 0.5f;
+                fd.restitution = 0.2f;
+                fd.filter.categoryBits = k_safe_zone_cage_cat;
+                fd.filter.maskBits = k_safe_zone_cage_mask;
+                int i;
+                for(i = 0; i<6; i++){
+                    shape.Set(b2Vec2(r*cos(i/6.0f*M_PI*2), r*sin(i/6.0f*M_PI*2)), b2Vec2( r*cos((i+1)/6.0f*M_PI*2) ,  r*sin((i+1)/6.0f*M_PI*2) ));
+                    gm->safe_zone.cage->CreateFixture(&fd);
+                    printf("cage: %d %.1f %.1f\n", i,cx + r*cos(i/6.0f*M_PI*2),cy+r*sin(i/6.0f*M_PI*2) );
+                }
             }
             else if(strcmp(color, "#ff0000") == 0 || strcmp(color, "#FF0000") == 0){
                 b2Vec2 pos(cx,cy);
@@ -1545,9 +1732,11 @@ int gm_load_level_svg(game gm, char * file_path){
 
                 b2FixtureDef fd;
                 fd.shape = &circle;
-                fd.density = 0.08f;
+                fd.density = 0.04f;
                 fd.restitution = 0.5f;
                 fd.friction = 0.2f;
+                fd.filter.categoryBits = k_hero_cat;
+                fd.filter.maskBits = k_hero_mask;
                 fd.filter.categoryBits = k_hero_cat;
                 fd.filter.maskBits = k_hero_mask;
                 fd.userData = &gm->hero;
@@ -1556,7 +1745,7 @@ int gm_load_level_svg(game gm, char * file_path){
                 gm->hero.bod->CreateFixture(&fd);
                 gm->hero.bod->SetFixedRotation(fix_rotation);
                 gm->hero.bod->SetLinearDamping(damping);
-
+                gm->hero.bod->SetAngularDamping(damping);
 				gm->hero.state = PERSON;
                 gm->hero.whoami = t_hero;
 				gm->hero.nrg = 100;
@@ -1585,15 +1774,18 @@ int gm_load_level_svg(game gm, char * file_path){
 
                 b2FixtureDef fd;
                 fd.shape = &circle;
-                fd.density = 0.08f;
+                fd.density = 0.05f;
                 fd.restitution = 0.5f;
                 fd.friction = 0.2f;
+                fd.filter.categoryBits = k_person_cat;
+                fd.filter.maskBits = k_person_mask;
                 fd.userData = &gm->person[num];
 
                 
                 gm->person[num].bod->CreateFixture(&fd);
                 gm->person[num].bod->SetFixedRotation(fix_rotation);
                 gm->person[num].bod->SetLinearDamping(damping);
+                gm->person[num].bod->SetAngularDamping(damping);
 
 				gm->person[num].state = ZOMBIE;
 				gm->person[num].emo = NORMAL;
@@ -1628,14 +1820,17 @@ int gm_load_level_svg(game gm, char * file_path){
 
                 b2FixtureDef fd;
                 fd.shape = &circle;
-                fd.density = 0.08f;
+                fd.density = 0.05f;
                 fd.restitution = 0.5f;
                 fd.friction = 0.2f;
+                fd.filter.categoryBits = k_person_cat;
+                fd.filter.maskBits = k_person_mask;
                 fd.userData = &gm->person[num];
                 
                 gm->person[num].bod->CreateFixture(&fd);
                 gm->person[num].bod->SetFixedRotation(fix_rotation);
                 gm->person[num].bod->SetLinearDamping(damping);
+                gm->person[num].bod->SetAngularDamping(damping);
 
 				gm->person[num].state = PERSON;
 				gm->person[num].emo = NORMAL;
@@ -1678,6 +1873,8 @@ int gm_load_level_svg(game gm, char * file_path){
             fd.shape = &shape;
             fd.density = 0.0f;
             fd.friction = 1.0f;
+            fd.filter.categoryBits = k_walls_cat;
+            fd.filter.maskBits = k_walls_mask;
             float x1, x2, y1, y2;
             name = mxmlElementGetAttr(node, "x1"); 
             sscanf(name, "%f", &x1);
@@ -1761,17 +1958,16 @@ int gm_load_level_svg(game gm, char * file_path){
             circle.m_radius = r;
             b2FixtureDef fd;
             fd.shape = &circle;
-            fd.density = 0.08f;
             fd.restitution = 0.5f;
             fd.friction = 0.2f;
-            fd.filter.categoryBits = k_oport_cat;
-            fd.filter.maskBits = k_port_mask;
+            fd.filter.categoryBits = k_open_portal_cat;
+            fd.filter.maskBits = 0;
             gm->portal[pn].bod->CreateFixture(&fd);
 
             circle.m_radius = r*0.8f;
             fd.shape = &circle;
-            fd.filter.categoryBits = k_hero_cat;
-            fd.filter.maskBits = k_hero_mask;
+            fd.filter.categoryBits = k_open_portal_sensor_cat;
+            fd.filter.maskBits = k_open_portal_sensor_mask;
             fd.isSensor = true;
             fd.userData = &gm->portal[pn];
             gm->portal[pn].bod->CreateFixture(&fd);
@@ -1846,9 +2042,26 @@ int gm_load_level_svg(game gm, char * file_path){
 
 			
             if(strcmp(color, "#e5e5e5") == 0){
-                gm->safe_zone.p.x = cx;
-                gm->safe_zone.p.y = cy;
-                gm->safe_zone.r = r;
+                gm->safe_zone.o.p.x = cx;
+                gm->safe_zone.o.p.y = cy;
+                gm->safe_zone.o.r = r;
+				gm->safe_zone.whoami = t_safezone;
+
+                b2Vec2 pos(cx,cy);
+                b2BodyDef bd;
+                bd.position = pos;
+                gm->safe_zone.bod = gm->m_world->CreateBody(&bd);
+                b2CircleShape circle;
+                circle.m_radius = r;
+                b2FixtureDef fd;
+                fd.shape = &circle;
+                fd.restitution = 0.5f;
+                fd.friction = 0.2f;
+                fd.filter.categoryBits = k_safe_zone_sensor_cat;
+                fd.filter.maskBits = k_person_mask;
+                gm->safe_zone.bod->CreateFixture(&fd);
+
+
             }
             else if(strcmp(color, "#ff0000") == 0 || strcmp(color, "#FF0000") == 0){
 				gm->hero.state = PERSON;
@@ -1878,14 +2091,17 @@ int gm_load_level_svg(game gm, char * file_path){
 
                 b2FixtureDef fd;
                 fd.shape = &circle;
-                fd.density = 0.08f;
+                fd.density = 0.05f;
                 fd.restitution = 0.5f;
                 fd.friction = 0.2f;
                 fd.userData = &gm->person[num];
+                fd.filter.categoryBits = k_person_cat;
+                fd.filter.maskBits = k_person_mask;
 
                 gm->person[num].bod->CreateFixture(&fd);
                 gm->person[num].bod->SetFixedRotation(fix_rotation);
                 gm->person[num].bod->SetLinearDamping(damping);
+                gm->person[num].bod->SetAngularDamping(damping);
 
 				gm->person[num].state = ZOMBIE;
 				gm->person[num].emo = NORMAL;
@@ -1920,14 +2136,17 @@ int gm_load_level_svg(game gm, char * file_path){
 
                 b2FixtureDef fd;
                 fd.shape = &circle;
-                fd.density = 0.08f;
+                fd.density = 0.05f;
                 fd.restitution = 0.5f;
                 fd.friction = 0.2f;
+                fd.filter.categoryBits = k_person_cat;
+                fd.filter.maskBits = k_person_mask;
                 fd.userData = &gm->person[num];
 
                 gm->person[num].bod->CreateFixture(&fd);
                 gm->person[num].bod->SetFixedRotation(fix_rotation);
                 gm->person[num].bod->SetLinearDamping(damping);
+                gm->person[num].bod->SetAngularDamping(damping);
 
 				gm->person[num].state = PERSON;
 				gm->person[num].emo = NORMAL;
@@ -1954,6 +2173,90 @@ int gm_load_level_svg(game gm, char * file_path){
 	return 1;
 }
 
+void cl_hero_person(game gm, actor_type * hero, actor_type * person){
+    _hero * t_hero = (_hero*)hero;
+    ppl   * t_ppl  = (ppl*)person;
+    if(t_hero->state == PERSON && t_ppl->state == ZOMBIE){
+        gm->hero.nrg -= 90;
+        s_add_snd(gm->saved_src, gm->buf[al_hdeath_buf], &gm->hero.o,0.1, 1);
+    }
+    if(t_hero->state == ZOMBIE && t_ppl->state == PERSON){
+        t_ppl->timer = MAX_TIME;
+        t_ppl->state = P_Z;
+        chain_cut(gm, t_ppl - gm->person);
+        s_add_snd(gm->saved_src, gm->buf[al_pdeath_buf], &t_ppl->o,1, 4);
+    }
+    if(t_hero->state == PERSON && t_ppl->state == PERSON){
+        int k = 0;
+        int i = t_ppl - gm->person;
+        int leave = 0;
+        for(k=0; k<gm->chain.num; k++){
+            if(i == gm->chain.ppl[k]){
+                leave = 1;
+            }
+        }
+        
+        if(leave == 0){
+            gm->hero.spring_state = ATTACHED;
+            gm->chain.ppl[gm->chain.num] = i;
+            gm->chain.num++;
+            gm->chain.make_q[gm->chain.qnum] = i;
+            gm->chain.qnum++;
+            
+            int rand_num = rand()%3;
+            switch (rand_num) {
+                case 0:
+                    s_add_snd(gm->saved_src, gm->buf[al_attached1_buf], &gm->person[i].o ,1, 1);
+                    break;
+                case 1:
+                    s_add_snd(gm->saved_src, gm->buf[al_attached2_buf], &gm->person[i].o ,1, 1);
+                    break;
+                case 2:
+                    s_add_snd(gm->saved_src, gm->buf[al_attached3_buf], &gm->person[i].o ,1, 1);
+                    break;
+            }
+            gm->hero.person_id = i;
+            gm->person[i].ready = 1;
+
+            b2Filter flt;
+            flt.categoryBits = k_hero_cat;
+            flt.maskBits = k_chain_person_mask;
+            gm->person[i].bod->GetFixtureList()->SetFilterData(flt);
+
+            gm->person[i].mx_f = 0;
+        }
+    }
+
+}
+
+void cl_person_person(game gm, actor_type * person1, actor_type * person2){
+    ppl * t_ppl1  = (ppl*)person1;
+    ppl * t_ppl2  = (ppl*)person2;
+    if(t_ppl1->state == PERSON && t_ppl2->state == ZOMBIE){
+        t_ppl1->timer = MAX_TIME;
+        t_ppl1->state = P_Z;
+        t_ppl1->parent_id = t_ppl2 - gm->person;
+        b2Filter flt;
+        flt.categoryBits = k_person_cat;
+        flt.maskBits = k_person_mask;
+        t_ppl1->bod->GetFixtureList()->SetFilterData(flt);
+        chain_cut(gm, t_ppl1 - gm->person);
+        s_add_snd(gm->saved_src, gm->buf[al_pdeath_buf], &t_ppl1->o,1, 4);
+    }
+}
+
+void cl_safezone_person_begin(game gm, actor_type * person1, actor_type * person2){
+    _safe_zone * safe_zone  = (_safe_zone*)person1;
+    safe_zone->sensor_touch++;
+    printf("SZ-T: %d\n", safe_zone->sensor_touch);
+}
+
+void cl_safezone_person_end(game gm, actor_type * person1, actor_type * person2){
+    _safe_zone * safe_zone  = (_safe_zone*)person1;
+    safe_zone->sensor_touch--;
+    printf("SZ-T: %d\n", safe_zone->sensor_touch);
+}
+
 void MyContactListener::BeginContact(b2Contact* contact)
 { 
     actor_type * typeA = (actor_type*)contact->GetFixtureA()->GetUserData(); 
@@ -1973,6 +2276,24 @@ void MyContactListener::BeginContact(b2Contact* contact)
                gm->onpt = tportal - gm->portal;
            }
         }
+        if(typeA->whoami == t_person && typeB->whoami == t_person){
+            cl_person_person(gm, typeB, typeA);
+            cl_person_person(gm, typeA, typeB);
+        }
+
+        if(typeA->whoami == t_hero && typeB->whoami == t_person){
+            cl_hero_person(gm, typeA, typeB);
+        }
+        else if(typeA->whoami == t_person && typeB->whoami == t_hero){
+            cl_hero_person(gm, typeB, typeA);
+        }
+        
+        if(typeA->whoami == t_person && typeB->whoami == t_safezone){
+            cl_safezone_person_begin(gm, typeB, typeA);
+        }
+        else if(typeB->whoami == t_person && typeA->whoami == t_safezone){
+            cl_safezone_person_begin(gm, typeA, typeB);
+        }
     }
 }
 
@@ -1987,6 +2308,12 @@ void MyContactListener::EndContact(b2Contact* contact){
         else if(typeA->whoami == t_hero && typeB->whoami == t_portal){
            gm->onpt = -1;
         }
+        if(typeA->whoami == t_person && typeB->whoami == t_safezone){
+            cl_safezone_person_end(gm, typeB, typeA);
+        }
+        else if(typeB->whoami == t_person && typeA->whoami == t_safezone){
+            cl_safezone_person_end(gm, typeA, typeB);
+        }
     }
 }
 void MyContactListener::PreSolve(b2Contact* contact, const b2Manifold* oldManifold){
@@ -1995,4 +2322,46 @@ void MyContactListener::PostSolve(b2Contact* contact, const b2ContactImpulse* im
 
 void MyContactListener::SetGM(game _gm){
     gm = _gm;
+}
+
+
+void draw_line(b2Vec2 p1, b2Vec2 p2, GLuint tex){
+		glBindTexture(GL_TEXTURE_2D, tex);
+		glPushMatrix();
+		glBegin(GL_QUADS);
+		
+        b2Vec2 tt, ttt;
+
+
+		glTexCoord2f(1.0, 0.0);
+        tt = p1 - p2;
+        ttt = tt;
+        tt.x = -ttt.y;
+        tt.y = ttt.x;
+        tt.Normalize();
+        tt *= 2;
+        ttt = tt;// Store this for later
+        tt += p1;
+		glVertex3f(tt.x, tt.y, 0.0);
+
+		glTexCoord2f(0.0, 0.0);
+        tt.x = -ttt.x;
+        tt.y = -ttt.y;
+        tt += p1;
+		glVertex3f(tt.x, tt.y, 0.0);
+
+		glTexCoord2f(0.0, 1.0);
+        tt.x = -ttt.x;
+        tt.y = -ttt.y;
+        tt += p2;
+		glVertex3f(tt.x, tt.y, 0.0);
+
+		glTexCoord2f(1.0, 1.0);
+        tt = ttt;
+        tt += p2;
+		glVertex3f(tt.x, tt.y, 0.0);
+
+		glEnd();
+		glPopMatrix();
+
 }

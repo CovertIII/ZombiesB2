@@ -76,7 +76,7 @@ int lives = 3;
 int continues = 3;
 int extra_ppl = 0;
 int total_deaths = 0;
-object herot;
+b2Vec2 herot;
 int save_count = 0;
 char * portal_disp;
 GLuint lives_tex;

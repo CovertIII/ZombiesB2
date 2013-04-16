@@ -257,8 +257,8 @@
 		29B97317FDCFA39411CA2CEA /* Resources */ = {
 			isa = PBXGroup;
 			children = (
-				7ADD873B150F86CE002E49AB /* snd */,
 				7ADD8753150F86EF002E49AB /* imgs */,
+				7ADD873B150F86CE002E49AB /* snd */,
 				7ADD8769150F86EF002E49AB /* lvl */,
 				8D1107310486CEB800E47090 /* Info.plist */,
 				089C165CFE840E0CC02AAC07 /* InfoPlist.strings */,

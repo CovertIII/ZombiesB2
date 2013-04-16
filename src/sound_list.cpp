@@ -3,6 +3,7 @@
 #include <math.h>
 #include <OpenAL/al.h>
 #include <OpenAL/alc.h>
+#include <Box2d/Box2d.h>
 #include "vector2.h"
 #include "physics.h"
 #include "sound_list.h"
@@ -11,6 +12,7 @@ typedef struct s_node {
 	ALuint src;
     int priority;
     object * o;
+    //b2Body * o;
 	struct s_node * next;
 } s_node;
 

@@ -30,11 +30,11 @@ void gm_nkey_down(game gm, unsigned char key);
 
 void gm_render(game gm);
 
-object gm_get_hero(game gm);
+b2Vec2 gm_get_hero(game gm);
 
 void gm_set_db_string(game gm, char * db_path);
 
-void gm_set_hero(game gm, object hero);
+void gm_set_hero(game gm, b2Vec2 hero);
 
 char * gm_portal(game gm);
 
