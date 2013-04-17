@@ -304,7 +304,7 @@
 							<real>346</real>
 						</array>
 						<key>RubberWindowFrame</key>
-						<string>0 59 1280 719 0 0 1280 778 </string>
+						<string>3 59 1280 719 0 0 1280 778 </string>
 					</dict>
 					<key>Module</key>
 					<string>PBXSmartGroupTreeModule</string>
@@ -334,7 +334,7 @@
 										<key>_historyCapacity</key>
 										<integer>0</integer>
 										<key>bookmark</key>
-										<string>7A12D3A3171E1BB0009B4AA5</string>
+										<string>7A12D415171E51ED009B4AA5</string>
 										<key>history</key>
 										<array>
 											<string>7AC1F3EC141309170086E03C</string>
@@ -373,7 +373,7 @@
 											<string>7A74012D1719C6A000F4545D</string>
 											<string>7A74012E1719C6A000F4545D</string>
 											<string>7A740164171A1D9600F4545D</string>
-											<string>7A12D3A0171E1AFC009B4AA5</string>
+											<string>7A12D414171E51ED009B4AA5</string>
 										</array>
 									</dict>
 									<key>SplitCount</key>
@@ -389,7 +389,7 @@
 								<key>Frame</key>
 								<string>{{0, 0}, {912, 301}}</string>
 								<key>RubberWindowFrame</key>
-								<string>0 59 1280 719 0 0 1280 778 </string>
+								<string>3 59 1280 719 0 0 1280 778 </string>
 							</dict>
 							<key>Module</key>
 							<string>PBXNavigatorGroup</string>
@@ -468,7 +468,7 @@
 										<key>Frame</key>
 										<string>{{10, 27}, {912, 345}}</string>
 										<key>RubberWindowFrame</key>
-										<string>0 59 1280 719 0 0 1280 778 </string>
+										<string>3 59 1280 719 0 0 1280 778 </string>
 									</dict>
 									<key>Module</key>
 									<string>PBXBuildResultsModule</string>
@@ -695,7 +695,7 @@
 		<string>/Users/williamcovertiii/Documents/ZombiesGame/Zombies_src_box2d/Zombies.xcodeproj</string>
 	</array>
 	<key>WindowString</key>
-	<string>0 59 1280 719 0 0 1280 778 </string>
+	<string>3 59 1280 719 0 0 1280 778 </string>
 	<key>WindowToolsV3</key>
 	<array>
 		<dict>

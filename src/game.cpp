@@ -690,14 +690,14 @@ void gm_update(game gm, int width, int height, double dt){
         p2 = gm->person[num].bod->GetPosition();
 
         b2PolygonShape shape;
-        shape.SetAsBox(5.0f, 0.125f);
+        shape.SetAsBox(3.0f, 0.2f);
 
         b2FixtureDef fd;
         fd.shape = &shape;
-        fd.density = 0.2f;
+        fd.density = 0.1f;
         fd.friction = 0.2f;
-
-        b2RevoluteJointDef jd;
+        fd.filter.categoryBits = k_hero_cat;
+        fd.filter.maskBits = k_hero_mask;
 
         b2BodyDef bd;
         bd.type = b2_dynamicBody;
@@ -706,13 +706,28 @@ void gm_update(game gm, int width, int height, double dt){
         gm->chain.links[gm->chain.num-1] = link;
         link->CreateFixture(&fd);
 
-        b2Vec2 anchor(p1.x, p1.y);
-        jd.Initialize(gm->hero.bod, link, anchor);
-        gm->m_world->CreateJoint(&jd);     
+        b2DistanceJointDef jd;
 
-        anchor.x = p2.x; anchor.y = p2.y;
-        jd.Initialize(gm->person[num].bod, link, anchor);
-        gm->m_world->CreateJoint(&jd);     
+        jd.frequencyHz = 10.0f;
+        jd.dampingRatio = 0.5f;
+
+        jd.bodyA = gm->hero.bod;
+        jd.bodyB = link;
+        jd.localAnchorA.Set(0.0f, 0.0f);
+        jd.localAnchorB.Set(-3.2f, 0.0f);
+        p1 = jd.bodyA->GetWorldPoint(jd.localAnchorA);
+        p2 = jd.bodyB->GetWorldPoint(jd.localAnchorB);
+        jd.length = 0.0f;
+        gm->m_world->CreateJoint(&jd);
+
+        jd.bodyA = link;
+        jd.bodyB = gm->person[num].bod;
+        jd.localAnchorA.Set(3.0f, 0.0f);
+        jd.localAnchorB.Set(0.0f, 0.0f);
+        p1 = jd.bodyA->GetWorldPoint(jd.localAnchorA);
+        p2 = jd.bodyB->GetWorldPoint(jd.localAnchorB);
+        jd.length = 0;
+        gm->m_world->CreateJoint(&jd);
     }
 
     //Check for joints to destroy
@@ -729,37 +744,39 @@ void gm_update(game gm, int width, int height, double dt){
 		
         while(SensorContact != NULL){
             actor_type * actor = (actor_type*)SensorContact->other->GetFixtureList()->GetUserData();
-            if(actor->whoami == t_person){
-                ppl * person = (ppl*)actor;
-                _safe_zone * safe_zone = &gm->safe_zone;
-                if(person->state == PERSON){
-                    if((person->bod->GetPosition() - safe_zone->bod->GetPosition()).LengthSquared() < (safe_zone->tr - person->o.r)*(safe_zone->tr - person->o.r)){
-                        b2Filter flt;
-                        flt.categoryBits = k_person_cat;
-                        flt.maskBits = k_person_mask;
-                        person->bod->GetFixtureList()->SetFilterData(flt);
-                        person->state = SAFE;
-                    }
-                }
-                else if(person->state == P_Z || person->state == ZOMBIE){
-                    b2Vec2 pp = person->bod->GetPosition();
-                    b2Vec2 sp = safe_zone->bod->GetPosition();
-                    person->bod->ApplyForce(pp-sp, pp);
-                }
-            }
-            else if(actor->whoami == t_hero){
-                _hero * person = (_hero*)actor;
-                _safe_zone * safe_zone = &gm->safe_zone;
-                printf("SZ: %.2f\n", (person->bod->GetPosition() - safe_zone->bod->GetPosition()).Length());
-
-                if((person->bod->GetPosition() - safe_zone->bod->GetPosition()).LengthSquared() < 
-                        (safe_zone->tr - person->o.r)*(safe_zone->tr - person->o.r) && person->state != DONE){
-                    person->state = SAFE;
-                }
-                else if(person->state == SAFE){
-                    person->state = PERSON;
-                }
-            }
+			if (actor != NULL) {
+				if(actor->whoami == t_person){
+					ppl * person = (ppl*)actor;
+					_safe_zone * safe_zone = &gm->safe_zone;
+					if(person->state == PERSON){
+						if((person->bod->GetPosition() - safe_zone->bod->GetPosition()).LengthSquared() < (safe_zone->tr - person->o.r)*(safe_zone->tr - person->o.r)){
+							b2Filter flt;
+							flt.categoryBits = k_person_cat;
+							flt.maskBits = k_person_mask;
+							person->bod->GetFixtureList()->SetFilterData(flt);
+							person->state = SAFE;
+						}
+					}
+					else if(person->state == P_Z || person->state == ZOMBIE){
+						b2Vec2 pp = person->bod->GetPosition();
+						b2Vec2 sp = safe_zone->bod->GetPosition();
+						person->bod->ApplyForce(pp-sp, pp);
+					}
+				}
+				else if(actor->whoami == t_hero){
+					_hero * person = (_hero*)actor;
+					_safe_zone * safe_zone = &gm->safe_zone;
+					
+					
+					if((person->bod->GetPosition() - safe_zone->bod->GetPosition()).LengthSquared() < 
+					   (safe_zone->tr - person->o.r)*(safe_zone->tr - person->o.r) && person->state != DONE){
+						person->state = SAFE;
+					}
+					else if(person->state == SAFE){
+						person->state = PERSON;
+					}
+				}	
+			}
             SensorContact = SensorContact->next;
         }
 
@@ -892,49 +909,26 @@ void gm_render(game gm){
 
 	}
 	
-	if(gm->chain.num > 0){
-		i = gm->chain.ppl[gm->chain.num-1];
-        b2Vec2 hp, pp, pp1, pp2, tt, ttt;
-        hp = gm->hero.bod->GetPosition();
-        pp = gm->person[i].bod->GetPosition();
-
-        pp1 = hp - pp;
-        pp1.Normalize();
-        pp1 *= gm->person[i].o.r;
-        pp1 += pp;
-
-        pp2 = pp - hp;
-        pp2.Normalize();
-        pp2 *= gm->hero.o.r;
-        pp2 += hp;
-        draw_line(pp1,pp2,gm->rope_tex);
-
-		int k;
-		for(k = gm->chain.num-1; k > 0; k--){
-			i = gm->chain.ppl[k];
-			int h = gm->chain.ppl[k-1];
-
-            hp = gm->person[i].bod->GetPosition();
-            pp = gm->person[h].bod->GetPosition();
-
-            pp1 = hp - pp;
-            pp1.Normalize();
-            pp1 *= gm->person[h].o.r;
-            pp1 += pp;
-
-            pp2 = pp - hp;
-            pp2.Normalize();
-            pp2 *= gm->person[i].o.r;
-            pp2 += hp;
-            draw_line(pp1,pp2,gm->rope_tex);
-
-            /*
-			vector2 p1,p2;
-			p1 = v2Add(gm->person[i].o.p, v2sMul(gm->person[i].o.r, v2Unit(v2Sub(gm->person[h].o.p, gm->person[i].o.p))));
-			p2 = v2Add(gm->person[h].o.p, v2sMul(gm->person[h].o.r, v2Unit(v2Sub(gm->person[i].o.p, gm->person[h].o.p))));
-            */
-		}
-	}
+	int k;
+    for(k = 0; k < gm->chain.num; k++){
+        b2Vec2 p = gm->chain.links[k]->GetPosition();
+        float th = gm->chain.links[k]->GetAngle();
+        glPushMatrix();
+        glTranslatef(p.x, p.y, 0);
+        glRotatef(th*180/M_PI, 0, 0, 1);
+        glScalef(3.0f,0.2f,0);
+        glBegin(GL_QUADS);
+        glTexCoord2f(0.0, 0.0);
+        glVertex3f(-1.0, -1.0, 0.0);
+        glTexCoord2f(0.0, 1.0);
+        glVertex3f(-1.0, 1.0, 0.0);
+        glTexCoord2f(1.0, 1.0);
+        glVertex3f(1.0, 1.0, 0.0);
+        glTexCoord2f(1.0, 0.0);
+        glVertex3f(1.0, -1.0, 0.0);
+        glEnd();
+        glPopMatrix();
+    }
 
     stink_render(gm);
 	
@@ -2339,7 +2333,7 @@ void draw_line(b2Vec2 p1, b2Vec2 p2, GLuint tex){
         tt.x = -ttt.y;
         tt.y = ttt.x;
         tt.Normalize();
-        tt *= 2;
+        tt *= 0.5f;
         ttt = tt;// Store this for later
         tt += p1;
 		glVertex3f(tt.x, tt.y, 0.0);
