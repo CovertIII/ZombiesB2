@@ -229,7 +229,7 @@ typedef struct {
     int make_q[100];
     int qnum;
 
-    b2Joint * delete_q[100];
+    b2Body * delete_q[100];
     int dnum;
 } _chain;
 
@@ -685,6 +685,35 @@ void gm_update(game gm, int width, int height, double dt){
     //CHeck for joints to create
     for(i = 0; i < gm->chain.qnum; i++){
         int num = gm->chain.make_q[i];
+
+        b2DistanceJointDef jd;
+
+        jd.frequencyHz = 10.0f;
+        jd.dampingRatio = 0.5f;
+
+
+        if(gm->chain.num > 1){
+            b2Body * plink = gm->chain.links[gm->chain.num-2];
+            b2Joint * djoint = NULL;
+            b2JointEdge * list;
+            for(list = plink->GetJointList(); list != NULL; list = list->next){
+                if(list->other == gm->hero.bod){
+                    djoint = list->joint;
+                }
+            }
+            gm->m_world->DestroyJoint(djoint);
+
+            jd.bodyA = plink;
+            jd.bodyB = gm->person[num].bod;
+            jd.localAnchorA.Set(-3.0f, 0.0f);
+            jd.localAnchorB.Set(0.0f, 0.0f);
+            jd.bodyA->GetWorldPoint(jd.localAnchorA);
+            jd.bodyB->GetWorldPoint(jd.localAnchorB);
+            jd.length = 0;
+            gm->m_world->CreateJoint(&jd);
+
+        }
+
         b2Vec2 p1, p2;
         p1 = gm->hero.bod->GetPosition();
         p2 = gm->person[num].bod->GetPosition();
@@ -706,10 +735,6 @@ void gm_update(game gm, int width, int height, double dt){
         gm->chain.links[gm->chain.num-1] = link;
         link->CreateFixture(&fd);
 
-        b2DistanceJointDef jd;
-
-        jd.frequencyHz = 10.0f;
-        jd.dampingRatio = 0.5f;
 
         jd.bodyA = gm->hero.bod;
         jd.bodyB = link;
@@ -731,11 +756,9 @@ void gm_update(game gm, int width, int height, double dt){
     }
 
     //Check for joints to destroy
-    /*
     for(i = 0; i < gm->chain.dnum; i++){
-      gm->m_world->DestroyJoint(gm->chain.delete_q[i]);
+      gm->m_world->DestroyBody(gm->chain.delete_q[i]);
     }
-    */
 
 
     //Check to see if safe zone sensor is active
@@ -910,6 +933,7 @@ void gm_render(game gm){
 	}
 	
 	int k;
+    glBindTexture( GL_TEXTURE_2D, gm->rope_tex);
     for(k = 0; k < gm->chain.num; k++){
         b2Vec2 p = gm->chain.links[k]->GetPosition();
         float th = gm->chain.links[k]->GetAngle();
@@ -1389,14 +1413,15 @@ void chain_cut(game gm, int index){
     for(k = match; k >= 0; k--){
         int temp = gm->chain.ppl[k];
         gm->person[temp].ready = 0;
-        gm->chain.delete_q[gm->chain.dnum] = gm->chain.jt[k];
-        gm->chain.jt[k] = NULL;
+        gm->chain.delete_q[gm->chain.dnum] = gm->chain.links[k];
+        gm->chain.links[k] = NULL;
         gm->chain.dnum++;
     }
     gm->chain.num = gm->chain.num - match - 1;
     for(k = 0; k < gm->chain.num; k++){
         gm->chain.ppl[k] = gm->chain.ppl[k + match + 1];
         gm->chain.jt[k] = gm->chain.jt[k + match + 1];
+        gm->chain.links[k] = gm->chain.links[k + match + 1];
     }
     if(gm->chain.num == 0){
         gm->hero.spring_state = NOT_ATTACHED;
@@ -1407,8 +1432,8 @@ void chain_ready_zero(game gm){
 	int k;
 	for(k = 0; k < gm->chain.num; k++){
 		int h = gm->chain.ppl[k];
-        if(gm->chain.jt[k] != NULL){
-            //gm->m_world->DestroyJoint(gm->chain.jt[k]);
+        if(gm->chain.links[k] != NULL){
+            gm->m_world->DestroyBody(gm->chain.links[k]);
         }
 		gm->person[h].ready = 0;
 	}
@@ -1608,6 +1633,7 @@ int gm_load_level_svg(game gm, char * file_path){
     gm->portal_num = 0;
     gm->save_count = 1;
     gm->timer = 0;
+    gm->onpt = -1;
     i = 1;
     gm->stnk_num = 0;
 
