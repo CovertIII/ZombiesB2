@@ -655,7 +655,7 @@ void gm_update(game gm, int width, int height, double dt){
 
 
     //Ai Stuff
-    //ai_functions(gm);
+    ai_functions(gm);
 
 
     //Box2d stuff
@@ -672,6 +672,8 @@ void gm_update(game gm, int width, int height, double dt){
         f = gm->person[i].bod->GetLinearVelocity();
         f.Normalize();
         f *= gm->person[i].mx_f;
+        f.x += gm->person[i].o.f.x;
+        f.y += gm->person[i].o.f.y;
         gm->person[i].bod->ApplyForce(f,p);
 
     }
@@ -1514,6 +1516,22 @@ void stink_render(game gm){
 void ai_functions(game gm){
     int k;
     for(k=0; k < gm->person_num; k++){
+        b2Vec2 p = gm->person[k].bod->GetPosition();
+        b2Vec2 v = gm->person[k].bod->GetLinearVelocity();
+        gm->person[k].o.f.x = 0;
+        gm->person[k].o.f.y = 0;
+        gm->person[k].o.p.x = p.x;
+        gm->person[k].o.p.y = p.y;
+        gm->person[k].o.v.x = v.x;
+        gm->person[k].o.v.y = v.y;
+
+        p = gm->hero.bod->GetPosition();
+        v = gm->hero.bod->GetLinearVelocity();
+        gm->hero.o.p.x = p.x;
+        gm->hero.o.p.y = p.y;
+        gm->hero.o.v.x = v.x;
+        gm->hero.o.v.y = v.y;
+
         if(gm->person[k].state == ZOMBIE && gm->person[k].chase == 0 && gm->person[k].o.r > 2){
             if(v2Len(v2Sub(gm->person[k].o.p, gm->hero.o.p)) <= 20){
                 gm->person[k].chase = 1;
@@ -2289,7 +2307,7 @@ void MyContactListener::BeginContact(b2Contact* contact)
                gm->onpt = tportal - gm->portal;
            }
         }
-        else if(typeA->whoami == t_hero && typeB->whoami == t_portal){
+        if(typeA->whoami == t_hero && typeB->whoami == t_portal){
            gm->onpt = -1;
            _portal * tportal = (_portal*)typeB;
            if(tportal->open){
@@ -2304,14 +2322,14 @@ void MyContactListener::BeginContact(b2Contact* contact)
         if(typeA->whoami == t_hero && typeB->whoami == t_person){
             cl_hero_person(gm, typeA, typeB);
         }
-        else if(typeA->whoami == t_person && typeB->whoami == t_hero){
+        if(typeA->whoami == t_person && typeB->whoami == t_hero){
             cl_hero_person(gm, typeB, typeA);
         }
         
         if(typeA->whoami == t_person && typeB->whoami == t_safezone){
             cl_safezone_person_begin(gm, typeB, typeA);
         }
-        else if(typeB->whoami == t_person && typeA->whoami == t_safezone){
+        if(typeB->whoami == t_person && typeA->whoami == t_safezone){
             cl_safezone_person_begin(gm, typeA, typeB);
         }
     }
