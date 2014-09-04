@@ -142,7 +142,13 @@ enum{
     t_person,
     t_safezone,
     t_wall,
-    t_spike
+    t_spike,
+    t_zombie
+};
+
+enum{
+    t_circle,
+    t_square
 };
 
 enum{
@@ -1599,6 +1605,92 @@ void gm_portal_ct(game gm, int user_id){
     sqlite3_close(sdb);   
 }
 
+int gm_load_character(game gm, int type, b2Vec2 vel, b2Vec2 pos, mxml_node_t *node){
+    bool fix_rotation = false;
+    float damping = 1;
+    int num = gm->person_num;
+    const char *name;
+    float r;
+
+    b2BodyDef bd;
+    bd.type = b2_dynamicBody;
+    bd.position = pos;
+
+    b2Body * bod;
+    bod = gm->m_world->CreateBody(&bd);
+    bod->SetLinearVelocity(vel);
+
+    name = mxmlElementGetAttr(node, "r"); 
+    sscanf(name, "%f", &r);
+
+    b2CircleShape circle;
+    circle.m_radius = r;
+
+    b2FixtureDef fd;
+    fd.shape = &circle;
+    fd.density = 0.04f;
+    fd.restitution = 0.5f;
+    fd.friction = 0.2f;
+
+    switch(type){
+        case t_hero:
+            fd.filter.categoryBits = k_hero_cat;
+            fd.filter.maskBits = k_hero_mask;
+            fd.filter.categoryBits = k_hero_cat;
+            fd.filter.maskBits = k_hero_mask;
+            fd.userData = &gm->hero;
+
+            gm->hero.bod = bod;
+            gm->hero.state = PERSON;
+            gm->hero.whoami = t_hero;
+            gm->hero.nrg = 100;
+            gm->hero.spring_state = NOT_ATTACHED;
+            gm->hero.o.p.x = pos.x;
+            gm->hero.o.p.y = pos.y;
+            gm->hero.o.v.x = 0;
+            gm->hero.o.v.y = 0;
+            gm->hero.o.r = r;
+            gm->hero.o.m = r*r*M_PI/25.2;
+            gm->hero.o.snd = 0;
+            break;
+
+        case t_spike:
+        case t_person:
+        case t_zombie:
+            fd.density = 0.05f;
+            fd.filter.categoryBits = k_person_cat;
+            fd.filter.maskBits = k_person_mask;
+            fd.userData = &gm->person[num];
+
+            gm->person[num].bod = bod;
+            gm->person[num].state = type == t_zombie ? ZOMBIE : PERSON;
+            gm->person[num].emo = NORMAL;
+            gm->person[num].whoami = t_person;
+            gm->person[num].ready = 0;
+            gm->person[num].o.p.x = pos.x;
+            gm->person[num].o.p.y = pos.y;
+            gm->person[num].o.v.x = vel.x;
+            gm->person[num].o.v.y = vel.y;
+            gm->person[num].o.r = r;
+            gm->person[num].o.m = r*r*M_PI/25.2;
+            if(type == t_zombie){
+                stink_add(gm, gm->person_num);
+            }
+            gm->person[num].mx_f = v2Len(gm->person[num].o.v);
+            gm->person[num].chase = 0;
+            gm->person[num].parent_id = -1;
+            gm->person[num].o.snd = 0;
+            gm->person_num++;
+            break;
+
+    }
+
+    bod->CreateFixture(&fd);
+    bod->SetFixedRotation(fix_rotation);
+    bod->SetLinearDamping(damping);
+    bod->SetAngularDamping(damping);
+}
+
 int gm_load_level_svg(game gm, char * file_path){
     bool fix_rotation = false;
     float damping = 1;
@@ -1758,151 +1850,26 @@ int gm_load_level_svg(game gm, char * file_path){
             else if(strcmp(color, "#ff0000") == 0 || strcmp(color, "#FF0000") == 0){
                 b2Vec2 pos(cx,cy);
                 b2Vec2 vel(0,0);
-                    
-                b2BodyDef bd;
-                bd.type = b2_dynamicBody;
-                bd.position = pos;
-                gm->hero.bod = gm->m_world->CreateBody(&bd);
-                gm->hero.bod->SetLinearVelocity(vel);
 
-                b2CircleShape circle;
-                circle.m_radius = r;
-
-                b2FixtureDef fd;
-                fd.shape = &circle;
-                fd.density = 0.04f;
-                fd.restitution = 0.5f;
-                fd.friction = 0.2f;
-                fd.filter.categoryBits = k_hero_cat;
-                fd.filter.maskBits = k_hero_mask;
-                fd.filter.categoryBits = k_hero_cat;
-                fd.filter.maskBits = k_hero_mask;
-                fd.userData = &gm->hero;
-
-                
-                gm->hero.bod->CreateFixture(&fd);
-                gm->hero.bod->SetFixedRotation(fix_rotation);
-                gm->hero.bod->SetLinearDamping(damping);
-                gm->hero.bod->SetAngularDamping(damping);
-				gm->hero.state = PERSON;
-                gm->hero.whoami = t_hero;
-				gm->hero.nrg = 100;
-				gm->hero.spring_state = NOT_ATTACHED;
-                gm->hero.o.p.x = cx;
-                gm->hero.o.p.y = cy;
-                gm->hero.o.v.x = 0;
-                gm->hero.o.v.y = 0;
-                gm->hero.o.r = r;
-                gm->hero.o.m = r*r*M_PI/25.2;
-                gm->hero.o.snd = 0;
+                gm_load_character(gm, t_hero, vel, pos, node);
             }
             else if(strcmp(color, "#00bf5f") == 0){
-                int num = gm->person_num;
                 b2Vec2 pos(cx,cy);
                 b2Vec2 vel(0,0);
-                    
-                b2BodyDef bd;
-                bd.type = b2_dynamicBody;
-                bd.position = pos;
-                gm->person[num].bod = gm->m_world->CreateBody(&bd);
-                gm->person[num].bod->SetLinearVelocity(vel);
 
-                b2CircleShape circle;
-                circle.m_radius = r;
-
-                b2FixtureDef fd;
-                fd.shape = &circle;
-                fd.density = 0.05f;
-                fd.restitution = 0.5f;
-                fd.friction = 0.2f;
-                fd.filter.categoryBits = k_person_cat;
-                fd.filter.maskBits = k_person_mask;
-                fd.userData = &gm->person[num];
-
-                
-                gm->person[num].bod->CreateFixture(&fd);
-                gm->person[num].bod->SetFixedRotation(fix_rotation);
-                gm->person[num].bod->SetLinearDamping(damping);
-                gm->person[num].bod->SetAngularDamping(damping);
-
-				gm->person[num].state = ZOMBIE;
-				gm->person[num].emo = NORMAL;
-                gm->person[num].whoami = t_person;
-				gm->person[num].ready = 0;
-                gm->person[num].o.p.x = cx;
-                gm->person[num].o.p.y = cy;
-                gm->person[num].o.v.x = 0;
-                gm->person[num].o.v.y = 0;
-                gm->person[num].o.r = r;
-                gm->person[num].o.m = r*r*M_PI/25.2;
-                stink_add(gm, gm->person_num);
-                gm->person[num].mx_f = v2Len(gm->person[num].o.v);
-                gm->person[num].chase = 0;
-                gm->person[num].parent_id = -1;
-                gm->person[num].o.snd = 0;
-                gm->person_num++;
+                gm_load_character(gm, t_zombie, vel, pos, node);
             }
             else if(strcmp(color, "#ffff00") == 0){
 				int num = gm->person_num;
                 b2Vec2 pos(cx,cy);
                 b2Vec2 vel(0,0);
-                    
-                b2BodyDef bd;
-                bd.type = b2_dynamicBody;
-                bd.position = pos;
-                gm->person[num].bod = gm->m_world->CreateBody(&bd);
-                gm->person[num].bod->SetLinearVelocity(vel);
 
-                b2CircleShape circle;
-                circle.m_radius = r;
-
-                b2FixtureDef fd;
-                fd.shape = &circle;
-                fd.density = 0.05f;
-                fd.restitution = 0.5f;
-                fd.friction = 0.2f;
-                fd.filter.categoryBits = k_person_cat;
-                fd.filter.maskBits = k_person_mask;
-                fd.userData = &gm->person[num];
-                
-                gm->person[num].bod->CreateFixture(&fd);
-                gm->person[num].bod->SetFixedRotation(fix_rotation);
-                gm->person[num].bod->SetLinearDamping(damping);
-                gm->person[num].bod->SetAngularDamping(damping);
-
-				gm->person[num].state = PERSON;
-				gm->person[num].emo = NORMAL;
-                gm->person[num].whoami = t_person;
-				gm->person[num].ready = 0;
-                gm->person[num].o.p.x = cx;
-                gm->person[num].o.p.y = cy;
-                gm->person[num].o.v.x = 0;
-                gm->person[num].o.v.y = 0;
-                gm->person[num].o.r = r;
-                gm->person[num].o.m = r*r*M_PI/25.2;
-                gm->person[num].mx_f = v2Len(gm->person[num].o.v);
-                gm->person[num].chase = 0;
-                gm->person[num].parent_id = -1;
-                gm->person[num].o.snd = 0;
-                gm->person_num++;
+                gm_load_character(gm, t_person, vel, pos, node);
             }
             else if(strcmp(color, "#999999") == 0){
-				int num = gm->person_num;
-				gm->person[num].state = SPIKE;
-				gm->person[num].emo = NORMAL;
-                gm->person[num].whoami = t_spike;
-				gm->person[num].ready = 0;
-                gm->person[num].o.p.x = cx;
-                gm->person[num].o.p.y = cy;
-                gm->person[num].o.v.x = 0;
-                gm->person[num].o.v.y = 0;
-                gm->person[num].o.r = r;
-                gm->person[num].o.m = r*r*M_PI/25.2;
-                gm->person[num].mx_f = v2Len(gm->person[num].o.v);
-                gm->person[num].chase = 0;
-                gm->person[num].parent_id = -1;
-                gm->person[num].o.snd = 0;
-                gm->person_num++;
+                b2Vec2 pos(cx,cy);
+                b2Vec2 vel(0,0);
+                gm_load_character(gm, t_spike, vel, pos, node);
             }
         }
         else if(strcmp(name, "line") == 0){
@@ -2026,6 +1993,7 @@ int gm_load_level_svg(game gm, char * file_path){
         //This is for groups, groups store velocity information
         else if(strcmp(name, "g") == 0){
             mxml_node_t * child;
+            mxml_node_t * char_node;
 
             float cx;
             float cy;
@@ -2047,6 +2015,8 @@ int gm_load_level_svg(game gm, char * file_path){
 
                 if(strcmp(name, "circle") == 0){
 
+
+                    char_node = child;
                     name = mxmlElementGetAttr(child, "cx"); 
                     sscanf(name, "%f", &cx);
                     name = mxmlElementGetAttr(child, "cy"); 
@@ -2078,6 +2048,10 @@ int gm_load_level_svg(game gm, char * file_path){
                 vy *= -1;
             }
 
+            b2Vec2 pos;
+            pos.x = cx;
+            pos.y = cy;
+            b2Vec2 vel(vx,vy);
 			
             if(strcmp(color, "#e5e5e5") == 0){
                 gm->safe_zone.o.p.x = cx;
@@ -2085,7 +2059,6 @@ int gm_load_level_svg(game gm, char * file_path){
                 gm->safe_zone.o.r = r;
 				gm->safe_zone.whoami = t_safezone;
 
-                b2Vec2 pos(cx,cy);
                 b2BodyDef bd;
                 bd.position = pos;
                 gm->safe_zone.bod = gm->m_world->CreateBody(&bd);
@@ -2102,105 +2075,14 @@ int gm_load_level_svg(game gm, char * file_path){
 
             }
             else if(strcmp(color, "#ff0000") == 0 || strcmp(color, "#FF0000") == 0){
-				gm->hero.state = PERSON;
-				gm->hero.spring_state = NOT_ATTACHED;
-                gm->hero.o.p.x = cx;
-                gm->hero.o.p.y = cy;
-                gm->hero.o.v.x = vx;
-                gm->hero.o.v.y = vy;
-                gm->hero.o.r = r;
-                gm->hero.o.m = r*r*M_PI/25.2;
-                gm->hero.o.snd = 0;
-                gm->hero.whoami = t_hero;
+                gm_load_character(gm, t_hero, vel, pos, char_node);
             }
             else if(strcmp(color, "#00bf5f") == 0){
-                int num = gm->person_num;
-                    
-                b2BodyDef bd;
-                bd.type = b2_dynamicBody;
-                b2Vec2 pos(cx,cy);
-                b2Vec2 vel(vx,vy);
-                bd.position = pos;
-                gm->person[num].bod = gm->m_world->CreateBody(&bd);
-                gm->person[num].bod->SetLinearVelocity(vel);
-
-                b2CircleShape circle;
-                circle.m_radius = r;
-
-                b2FixtureDef fd;
-                fd.shape = &circle;
-                fd.density = 0.05f;
-                fd.restitution = 0.5f;
-                fd.friction = 0.2f;
-                fd.userData = &gm->person[num];
-                fd.filter.categoryBits = k_person_cat;
-                fd.filter.maskBits = k_person_mask;
-
-                gm->person[num].bod->CreateFixture(&fd);
-                gm->person[num].bod->SetFixedRotation(fix_rotation);
-                gm->person[num].bod->SetLinearDamping(damping);
-                gm->person[num].bod->SetAngularDamping(damping);
-
-				gm->person[num].state = ZOMBIE;
-				gm->person[num].emo = NORMAL;
-                gm->person[num].whoami = t_person;
-				gm->person[num].ready = 0;
-                gm->person[num].o.p.x = cx;
-                gm->person[num].o.p.y = cy;
-                gm->person[num].o.v.x = vx;
-                gm->person[num].o.v.y = vy;
-                gm->person[num].o.r = r;
-                gm->person[num].o.m = r*r*M_PI/25.2;
-                stink_add(gm, gm->person_num);
-                gm->person[num].mx_f = v2Len(gm->person[num].o.v);
-                gm->person[num].chase = 0;
-                gm->person[num].parent_id = -1;
-                gm->person[num].o.snd = 0;
-                gm->person_num++;
+                gm_load_character(gm, t_zombie, vel, pos, char_node);
             }
+
             else if(strcmp(color, "#ffff00") == 0){
-				int num = gm->person_num;
-                b2Vec2 pos(cx,cy);
-                b2Vec2 vel(vx,vy);
-                    
-                b2BodyDef bd;
-                bd.type = b2_dynamicBody;
-                bd.position = pos;
-                gm->person[num].bod = gm->m_world->CreateBody(&bd);
-                gm->person[num].bod->SetLinearVelocity(vel);
-
-                b2CircleShape circle;
-                circle.m_radius = r;
-
-                b2FixtureDef fd;
-                fd.shape = &circle;
-                fd.density = 0.05f;
-                fd.restitution = 0.5f;
-                fd.friction = 0.2f;
-                fd.filter.categoryBits = k_person_cat;
-                fd.filter.maskBits = k_person_mask;
-                fd.userData = &gm->person[num];
-
-                gm->person[num].bod->CreateFixture(&fd);
-                gm->person[num].bod->SetFixedRotation(fix_rotation);
-                gm->person[num].bod->SetLinearDamping(damping);
-                gm->person[num].bod->SetAngularDamping(damping);
-
-				gm->person[num].state = PERSON;
-				gm->person[num].emo = NORMAL;
-                gm->person[num].whoami = t_person;
-				gm->person[num].ready = 0;
-                gm->person[num].o.p.x = cx;
-                gm->person[num].o.p.y = cy;
-                gm->person[num].o.v.x = vx;
-                gm->person[num].o.v.y = vy;
-                gm->person[num].o.r = r;
-                gm->person[num].o.m = r*r*M_PI/25.2;
-                gm->person[num].mx_f = v2Len(gm->person[num].o.v);
-                gm->person[num].chase = 0;
-                gm->person[num].parent_id = -1;
-                gm->person[num].o.snd = 0;
-                gm->person_num++;
+                gm_load_character(gm, t_person, vel, pos, char_node);
             }
         }        
       
