@@ -148,7 +148,7 @@ enum{
 
 enum{
     t_circle,
-    t_square
+    t_rect
 };
 
 enum{
@@ -157,6 +157,7 @@ enum{
     gl_hero50,
     gl_hero100,
 	gl_smart_zombie,
+	gl_zombie_square,
 	gl_shield,
 	gl_portal_closed,
 	gl_portal_done,
@@ -193,6 +194,9 @@ typedef struct {
 	int emo; 
 	int ready;
     double mx_f;
+
+    int shape;
+    float h,w;
 
     int chase;
     int parent_id;
@@ -483,6 +487,10 @@ int gm_init_textures(game gm){
     strcpy(gm->res_buf, gm->res_path);
     strcat(gm->res_buf, "/imgs/spikeball.png");
     load_texture(gm->res_buf, &gm->h_tex[gl_spike_ball]);
+
+    strcpy(gm->res_buf, gm->res_path);
+    strcat(gm->res_buf, "/imgs/zombie_square.png");
+    load_texture(gm->res_buf, &gm->h_tex[gl_zombie_square]);
 
     gm->font = rat_init();
     strcpy(gm->res_buf, gm->res_path);
@@ -1041,11 +1049,18 @@ void gm_render(game gm){
 		else if(gm->person[i].state == SPIKE){
 			glBindTexture( GL_TEXTURE_2D, gm->h_tex[gl_spike_ball]);
 		}
+		if(gm->person[i].shape == t_rect){
+			glBindTexture( GL_TEXTURE_2D, gm->h_tex[gl_zombie_square]);
+        }
         p = gm->person[i].bod->GetPosition();
         rot = gm->person[i].bod->GetAngle();
 		glPushMatrix();
 		glTranslatef(p.x, p.y, 0);
-		glScalef(gm->person[i].o.r, gm->person[i].o.r,0);
+		if(gm->person[i].shape == t_rect){
+            glScalef(gm->person[i].w, gm->person[i].h,0);
+        } else{
+            glScalef(gm->person[i].o.r, gm->person[i].o.r,0);
+        }
         glRotatef(rot*180/M_PI, 0, 0, 1);
 		glBegin(GL_QUADS);
 		glTexCoord2f(0.0, 0.0);
@@ -1609,28 +1624,71 @@ int gm_load_character(game gm, int type, b2Vec2 vel, b2Vec2 pos, mxml_node_t *no
     bool fix_rotation = false;
     float damping = 1;
     int num = gm->person_num;
-    const char *name;
-    float r;
+    const char * name;
+    const char * elem_type;
+    float r, h, w;
+    int shape_type;
+
+    elem_type = mxmlGetElement(node);
 
     b2BodyDef bd;
-    bd.type = b2_dynamicBody;
-    bd.position = pos;
-
     b2Body * bod;
-    bod = gm->m_world->CreateBody(&bd);
-    bod->SetLinearVelocity(vel);
-
-    name = mxmlElementGetAttr(node, "r"); 
-    sscanf(name, "%f", &r);
-
-    b2CircleShape circle;
-    circle.m_radius = r;
-
     b2FixtureDef fd;
-    fd.shape = &circle;
-    fd.density = 0.04f;
-    fd.restitution = 0.5f;
-    fd.friction = 0.2f;
+
+    if(strcmp(elem_type, "circle") == 0){
+        shape_type = t_circle;
+
+        bd.type = b2_dynamicBody;
+        bd.position = pos;
+
+        bod = gm->m_world->CreateBody(&bd);
+        bod->SetLinearVelocity(vel);
+
+        name = mxmlElementGetAttr(node, "r"); 
+        sscanf(name, "%f", &r);
+
+        b2CircleShape circle;
+        circle.m_radius = r;
+
+        fd.shape = &circle;
+        fd.density = 0.04f;
+        fd.restitution = 0.5f;
+        fd.friction = 0.2f;
+    }
+    else if(strcmp(elem_type, "rect") == 0){
+        float x, y;
+        shape_type = t_rect;
+
+        name = mxmlElementGetAttr(node, "x"); 
+        sscanf(name, "%f", &x);
+        name = mxmlElementGetAttr(node, "y"); 
+        sscanf(name, "%f", &y);
+        name = mxmlElementGetAttr(node, "height"); 
+        sscanf(name, "%f", &h);
+        name = mxmlElementGetAttr(node, "width"); 
+        sscanf(name, "%f", &w);
+
+        h *= 0.5;
+        w *= 0.5;
+
+        pos.x = x;
+        pos.y = gm->h - y;
+
+        bd.type = b2_dynamicBody;
+        bd.position = pos;
+
+        bod = gm->m_world->CreateBody(&bd);
+        bod->SetLinearVelocity(vel);
+
+        b2PolygonShape polygon;
+        polygon.SetAsBox(w,h);
+
+        fd.shape = &polygon;
+        fd.density = 0.04f;
+        fd.restitution = 0.5f;
+        fd.friction = 0.2f;
+    }
+
 
     switch(type){
         case t_hero:
@@ -1667,6 +1725,9 @@ int gm_load_character(game gm, int type, b2Vec2 vel, b2Vec2 pos, mxml_node_t *no
             gm->person[num].emo = NORMAL;
             gm->person[num].whoami = t_person;
             gm->person[num].ready = 0;
+            gm->person[num].shape = shape_type;
+            gm->person[num].h = h;
+            gm->person[num].w = w;
             gm->person[num].o.p.x = pos.x;
             gm->person[num].o.p.y = pos.y;
             gm->person[num].o.v.x = vel.x;
@@ -1791,7 +1852,17 @@ int gm_load_level_svg(game gm, char * file_path){
         if(name == NULL)
         {break;}
 
-        if(strcmp(name, "circle") == 0){
+        if(strcmp(name, "rect") == 0){
+            const char *color=mxmlElementGetAttr(node, "fill");
+            if(strcmp(color, "#00bf5f") == 0){
+                b2Vec2 pos(0,0);
+                b2Vec2 vel(0,0);
+
+                gm_load_character(gm, t_zombie, vel, pos, node);
+            }
+
+        }
+        else if(strcmp(name, "circle") == 0){
             float cx;
             float cy;
             float r;
@@ -2014,14 +2085,23 @@ int gm_load_level_svg(game gm, char * file_path){
                 {break;}
 
                 if(strcmp(name, "circle") == 0){
-
-
                     char_node = child;
                     name = mxmlElementGetAttr(child, "cx"); 
                     sscanf(name, "%f", &cx);
                     name = mxmlElementGetAttr(child, "cy"); 
                     sscanf(name, "%f", &cy);
                     name = mxmlElementGetAttr(child, "r"); 
+                    sscanf(name, "%f", &r);
+                    cy = gm->h - cy; 
+                    color = mxmlElementGetAttr(child, "fill");
+                }
+                else if(strcmp(name, "rect") == 0){
+                    char_node = child;
+                    name = mxmlElementGetAttr(child, "x"); 
+                    sscanf(name, "%f", &cx);
+                    name = mxmlElementGetAttr(child, "y"); 
+                    sscanf(name, "%f", &cy);
+                    name = mxmlElementGetAttr(child, "width"); 
                     sscanf(name, "%f", &r);
                     cy = gm->h - cy; 
                     color = mxmlElementGetAttr(child, "fill");
@@ -2053,28 +2133,8 @@ int gm_load_level_svg(game gm, char * file_path){
             pos.y = cy;
             b2Vec2 vel(vx,vy);
 			
-            if(strcmp(color, "#e5e5e5") == 0){
-                gm->safe_zone.o.p.x = cx;
-                gm->safe_zone.o.p.y = cy;
-                gm->safe_zone.o.r = r;
-				gm->safe_zone.whoami = t_safezone;
-
-                b2BodyDef bd;
-                bd.position = pos;
-                gm->safe_zone.bod = gm->m_world->CreateBody(&bd);
-                b2CircleShape circle;
-                circle.m_radius = r;
-                b2FixtureDef fd;
-                fd.shape = &circle;
-                fd.restitution = 0.5f;
-                fd.friction = 0.2f;
-                fd.filter.categoryBits = k_safe_zone_sensor_cat;
-                fd.filter.maskBits = k_person_mask;
-                gm->safe_zone.bod->CreateFixture(&fd);
-
-
-            }
-            else if(strcmp(color, "#ff0000") == 0 || strcmp(color, "#FF0000") == 0){
+            
+            if(strcmp(color, "#ff0000") == 0 || strcmp(color, "#FF0000") == 0){
                 gm_load_character(gm, t_hero, vel, pos, char_node);
             }
             else if(strcmp(color, "#00bf5f") == 0){
