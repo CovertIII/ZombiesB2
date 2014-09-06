@@ -110,6 +110,7 @@ struct thread_data{
     data_record stats;
     char * gm_lvl;
     double tmp_time;
+    int complete;
     int ppl;
 };
 
@@ -119,7 +120,7 @@ void *save_lvl_stats(void *threadarg)
 {
     struct thread_data *my_data;
     my_data = (struct thread_data *) threadarg;
-    game_record_lvl_stats(my_data->stats, my_data->gm_lvl, my_data->tmp_time, my_data->ppl);
+    game_record_lvl_stats(my_data->stats, my_data->gm_lvl, my_data->tmp_time, my_data->ppl, my_data->complete);
 }
 /* done with threading stuff */
 
@@ -248,7 +249,7 @@ void init(int argc, char** argv){
 if(argc == 1){
   NSString * path;
   path = NSHomeDirectory ();
-  path = [path stringByAppendingString:@"/.zombie.db"];
+  path = [path stringByAppendingString:@"/.zombieB.db"];
   printf("Database path: %s\n", [path cStringUsingEncoding:1]);
   stats = init_data_record((char*)[path cStringUsingEncoding:1], res_path);
   stats_list_prep(stats);
@@ -560,6 +561,7 @@ void numbers(void)
                 	threadData.gm_lvl = level;
                 	threadData.tmp_time = tmp_time;
                 	threadData.ppl = ppl;
+                	threadData.complete = 1;
                 	pthread_t thread;
                 	
                 	int rc = pthread_create(&thread, NULL, save_lvl_stats, (void *) &threadData);
@@ -598,6 +600,23 @@ void numbers(void)
 					}
 					
                     game_mode = POSTGAME;
+                }
+                if(!level_test){
+                    int ppl;
+                    double tmp_time;
+                    gm_stats(gm, &tmp_time, &ppl);
+
+                	threadData.stats = stats;
+                	threadData.gm_lvl = level;
+                	threadData.tmp_time = tmp_time;
+                	threadData.ppl = ppl;
+                	threadData.complete = 0;
+                	pthread_t thread;
+                	
+                	int rc = pthread_create(&thread, NULL, save_lvl_stats, (void *) &threadData);
+                	if (rc){
+                	    printf("ERROR; return code from pthread_create() is %d\n", rc);
+                	}
                 }
             }
 

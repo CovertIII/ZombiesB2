@@ -162,7 +162,14 @@ int ck_create_tables(data_record db){
     sqlite3_finalize(sql);
 
 
-    sprintf(stmt, "CREATE TABLE level_stats (id INTEGER PRIMARY KEY, game_session_id NUMERIC, level_id TEXT, datetime INTEGER, time NUMERIC, people_saved NUMERIC, user_id INTEGER);");
+    sprintf(stmt, "CREATE TABLE level_stats (id INTEGER PRIMARY KEY,\n" 
+                                             "game_session_id NUMERIC,\n"
+                                             "level_id TEXT,\n"
+                                             "datetime INTEGER,\n"
+                                             "time NUMERIC,\n"
+                                             "people_saved NUMERIC,\n"
+                                             "complete INTEGER,\n"
+                                             "user_id INTEGER);");
     printf("%s\n", stmt);
     result = sqlite3_prepare_v2(sdb, stmt, sizeof(stmt) + 1 , &sql, &extra);
     printf("prepare result: %d; ", result);
@@ -671,7 +678,7 @@ int db_get_user_id(data_record db){
 
 
 
-void game_record_lvl_stats(data_record db, char * lvl, double time_lvl, int extra_ppl){
+void game_record_lvl_stats(data_record db, char * lvl, double time_lvl, int extra_ppl, int complete){
     sqlite3 * sdb;
     sqlite3_stmt * sql;
     const char * extra;
@@ -682,13 +689,14 @@ void game_record_lvl_stats(data_record db, char * lvl, double time_lvl, int extr
                  "time,"
                  "datetime,"
                  "user_id,"
-                 "people_saved) VALUES ('%d', '%s', '%f','%d','%d','%d');",
-            db->game_id,
+                 "people_saved,"
+                 "complete) VALUES (0 , '%s', '%f','%d','%d','%d','%d');",
             lvl,
             time_lvl,
             (int)time(NULL),
             db->user_id,
-            extra_ppl
+            extra_ppl,
+            complete
            );
     printf("%s\n", stmt);
     int result; 
@@ -894,7 +902,7 @@ void prepare_level_scores(data_record db){
 
     int i;
     for (i = 1; i <= db->max_level; i++) {
-        sprintf(stmt, "SELECT CAST(trim(level_id,'lvl') AS INTEGER) AS lvl_int, level_id, datetime, user.name, time, people_saved FROM level_stats LEFT OUTER JOIN user ON (user.id = level_stats.user_id) WHERE lvl_int = %d ORDER BY people_saved DESC, time LIMIT 10;", i);
+        sprintf(stmt, "SELECT CAST(trim(level_id,'lvl') AS INTEGER) AS lvl_int, level_id, datetime, user.name, time, people_saved FROM level_stats LEFT OUTER JOIN user ON (user.id = level_stats.user_id) WHERE lvl_int = %d AND complete = 1 ORDER BY people_saved DESC, time LIMIT 10;", i);
         result = sqlite3_prepare_v2(sdb, stmt, sizeof(stmt) + 1 , &sql, &extra);
         printf("prepare result: %d\n", result);
         
@@ -948,6 +956,13 @@ void stats_render_lvl(data_record db, char * lvl, int width, int height){
         glPushMatrix();
         glTranslatef(0, -200, 0);
         render_level_scores(db, width, height);
+        glPopMatrix();
+    }else{
+        char buf[100];
+        glPushMatrix();
+        glTranslatef(0, -200, 0);
+        sprintf(buf, "Press space to jump into the level");
+        rat_font_render_text(db->font, width/2 - 250,height-40, buf);
         glPopMatrix();
     }
 }

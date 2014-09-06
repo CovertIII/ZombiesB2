@@ -671,6 +671,9 @@ void gm_update(game gm, int width, int height, double dt){
     //Ai Stuff
     ai_functions(gm);
 
+	alListener3f(AL_POSITION, gm->hero.o.p.x, gm->hero.o.p.y, 0);
+    s_update(gm->saved_src);
+
 
     //Box2d stuff
     float hf = (gm->n)?300:100;
@@ -794,6 +797,14 @@ void gm_update(game gm, int width, int height, double dt){
 							flt.maskBits = k_person_mask;
 							person->bod->GetFixtureList()->SetFilterData(flt);
 							person->state = SAFE;
+                            int rand_num = rand()%2;
+                            if (rand_num == 0) {
+                                s_add_snd(gm->saved_src, gm->buf[al_saved1_buf], &person->o,1, 1);
+                            }
+                            else {
+                                s_add_snd(gm->saved_src, gm->buf[al_saved2_buf], &person->o,1, 1);
+                            }
+                            
 						}
 					}
 					else if(person->state == P_Z || person->state == ZOMBIE){
@@ -834,8 +845,6 @@ void gm_update(game gm, int width, int height, double dt){
 	gm->viewratio = gm->vmax.y - gm->vmin.y;
 	
 	
-	alListener3f(AL_POSITION, gm->hero.o.p.x, gm->hero.o.p.y, 0);
-    s_update(gm->saved_src);
 	
 	gm_update_mouse(gm);
 }
@@ -1404,7 +1413,7 @@ void gm_check_portals(game gm, int save_count){
         }else{
             gm->portal[i].open = 1;
         }
-        printf("Portid %d; Open %d;\n", i, gm->portal[i].open);
+        //printf("Portid %d; Open %d;\n", i, gm->portal[i].open);
     }
 }
 

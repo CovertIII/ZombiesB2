@@ -11,7 +11,7 @@ void stats_reload_fonts(data_record db);
 
 int db_get_lives(data_record db);
 
-void game_record_lvl_stats(data_record db, char * lvl, double time_lvl, int extra_ppl);
+void game_record_lvl_stats(data_record db, char * lvl, double time_lvl, int extra_ppl, int complete);
 
 void game_leave(data_record db, int lives, int deaths);
 
