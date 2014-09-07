@@ -143,7 +143,8 @@ enum{
     t_safezone,
     t_wall,
     t_spike,
-    t_zombie
+    t_zombie,
+    t_gravity_area
 };
 
 enum{
@@ -162,6 +163,7 @@ enum{
 	gl_portal_closed,
 	gl_portal_done,
 	gl_spike_ball,
+	gl_gravity,
     gl_num
 };
 
@@ -175,6 +177,7 @@ enum{
 //the memory
 typedef struct {
     int whoami;
+    b2Vec2 grav;
 } actor_type; //actor_type
 
 typedef struct {
@@ -188,6 +191,15 @@ typedef struct {
 
 typedef struct {
     int whoami;
+    b2Vec2 grav;
+    b2Vec2 dim;
+	b2Body* bod;
+} _gravity_area; //actor_type
+
+typedef struct {
+    int whoami;
+    b2Vec2 grav;
+
 	object o;
 	float timer;
 	int state; 
@@ -206,6 +218,8 @@ typedef struct {
 
 typedef struct {
     int whoami;
+    b2Vec2 grav;
+
 	object o;
 	
 	float timer;
@@ -215,6 +229,7 @@ typedef struct {
 	int person_id;
 	
 	float nrg;
+
 	b2Body* bod;
 } _hero;
 
@@ -279,6 +294,9 @@ typedef struct gametype {
 	ppl person[100]; //Zombies and people array
 	int person_num; //How many there are
 	_hero hero;
+
+    int gravity_area_num;
+    _gravity_area gravity_area[100];
 
     //Keeps track of who is in the hero chain
     _chain chain;
@@ -492,6 +510,10 @@ int gm_init_textures(game gm){
     strcat(gm->res_buf, "/imgs/zombie_square.png");
     load_texture(gm->res_buf, &gm->h_tex[gl_zombie_square]);
 
+    strcpy(gm->res_buf, gm->res_path);
+    strcat(gm->res_buf, "/imgs/gravity.png");
+    load_texture(gm->res_buf, &gm->h_tex[gl_gravity]);
+
     gm->font = rat_init();
     strcpy(gm->res_buf, gm->res_path);
     strcat(gm->res_buf, "/imgs/FreeUniversal.ttf");
@@ -681,6 +703,9 @@ void gm_update(game gm, int width, int height, double dt){
 	b2Vec2 f(gm->ak.x*hf, gm->ak.y*hf);
 	b2Vec2 p = gm->hero.bod->GetPosition();
 
+    f.x += gm->hero.grav.x;
+    f.y += gm->hero.grav.y;
+
 	gm->hero.bod->ApplyForce(f, p);
 
 
@@ -691,6 +716,8 @@ void gm_update(game gm, int width, int height, double dt){
         f *= gm->person[i].mx_f;
         f.x += gm->person[i].o.f.x;
         f.y += gm->person[i].o.f.y;
+        f.x += gm->person[i].grav.x;
+        f.y += gm->person[i].grav.y;
         gm->person[i].bod->ApplyForce(f,p);
 
     }
@@ -942,6 +969,27 @@ void gm_render(game gm){
             glPopMatrix();
         }
     }
+    
+    for(i = 0; i < gm->gravity_area_num; i++){
+        glBindTexture( GL_TEXTURE_2D, gm->h_tex[gl_gravity]);
+        b2Vec2 p   = gm->gravity_area[i].bod->GetPosition();
+        float  rot = gm->gravity_area[i].bod->GetAngle();
+		glPushMatrix();
+		glTranslatef(p.x, p.y, 0);
+        glRotatef(rot*180/M_PI, 0, 0, 1);
+        glScalef(gm->gravity_area[i].dim.x, gm->gravity_area[i].dim.y,0);
+		glBegin(GL_QUADS);
+		glTexCoord2f(0.0, 0.0);
+		glVertex3f(-1.0, -1.0, 0.0);
+		glTexCoord2f(0.0, 1.0);
+		glVertex3f(-1.0, 1.0, 0.0);
+		glTexCoord2f(1.0, 1.0);
+		glVertex3f(1.0, 1.0, 0.0);
+		glTexCoord2f(1.0, 0.0);
+		glVertex3f(1.0, -1.0, 0.0);
+		glEnd();
+		glPopMatrix();
+    }  
 
 	for(i = 0; i<gm->wall_num; i++){
 		
@@ -954,8 +1002,9 @@ void gm_render(game gm){
 
         draw_line(pt1,pt2,gm->rope_tex);
 
-
 	}
+
+  
 	
 	int k;
     glBindTexture( GL_TEXTURE_2D, gm->rope_tex);
@@ -1065,12 +1114,12 @@ void gm_render(game gm){
         rot = gm->person[i].bod->GetAngle();
 		glPushMatrix();
 		glTranslatef(p.x, p.y, 0);
+        glRotatef(rot*180/M_PI, 0, 0, 1);
 		if(gm->person[i].shape == t_rect){
             glScalef(gm->person[i].w, gm->person[i].h,0);
         } else{
             glScalef(gm->person[i].o.r, gm->person[i].o.r,0);
         }
-        glRotatef(rot*180/M_PI, 0, 0, 1);
 		glBegin(GL_QUADS);
 		glTexCoord2f(0.0, 0.0);
 		glVertex3f(-1.0, -1.0, 0.0);
@@ -1708,6 +1757,8 @@ int gm_load_character(game gm, int type, b2Vec2 vel, b2Vec2 pos, mxml_node_t *no
             fd.userData = &gm->hero;
 
             gm->hero.bod = bod;
+            gm->hero.grav.x = 0;
+            gm->hero.grav.y = 0;
             gm->hero.state = PERSON;
             gm->hero.whoami = t_hero;
             gm->hero.nrg = 100;
@@ -1729,6 +1780,8 @@ int gm_load_character(game gm, int type, b2Vec2 vel, b2Vec2 pos, mxml_node_t *no
             fd.filter.maskBits = k_person_mask;
             fd.userData = &gm->person[num];
 
+            gm->person[num].grav.x = 0;
+            gm->person[num].grav.y = 0;
             gm->person[num].bod = bod;
             gm->person[num].state = type == t_zombie ? ZOMBIE : PERSON;
             gm->person[num].emo = NORMAL;
@@ -1809,6 +1862,7 @@ int gm_load_level_svg(game gm, char * file_path){
     gm->safe_zone.o.v.x = 0;
     gm->safe_zone.o.v.y = 0;
     gm->person_num = 0;
+    gm->gravity_area_num = 0;
     gm->wall_num = 0;
     gm->portal_num = 0;
     gm->save_count = 1;
@@ -1862,12 +1916,62 @@ int gm_load_level_svg(game gm, char * file_path){
         {break;}
 
         if(strcmp(name, "rect") == 0){
+            float x, y, h, w;
+
             const char *color=mxmlElementGetAttr(node, "fill");
+            name = mxmlElementGetAttr(node, "x"); 
+            sscanf(name, "%f", &x);
+            name = mxmlElementGetAttr(node, "y"); 
+            sscanf(name, "%f", &y);
+            name = mxmlElementGetAttr(node, "height"); 
+            sscanf(name, "%f", &h);
+            name = mxmlElementGetAttr(node, "width"); 
+            sscanf(name, "%f", &w);
+
+            h *= 0.5;
+            w *= 0.5;
+            y = gm->h - y; 
+            x += w;
+            y -= h;
+
+
             if(strcmp(color, "#00bf5f") == 0){
-                b2Vec2 pos(0,0);
+                b2Vec2 pos(x,y);
                 b2Vec2 vel(0,0);
 
                 gm_load_character(gm, t_zombie, vel, pos, node);
+            }
+            //Gravify area
+            else if(strcmp(color, "#0000ff") == 0){
+                b2Vec2 pos(x,y);
+
+                b2BodyDef bd;
+                bd.position = pos;
+
+                b2Body * bod = gm->m_world->CreateBody(&bd);
+
+                b2PolygonShape polygon;
+                polygon.SetAsBox(w,h);
+
+                b2FixtureDef fd;
+                fd.shape = &polygon;
+                fd.userData = &gm->gravity_area[gm->gravity_area_num];
+                fd.density = 0.04f;
+                fd.restitution = 0.5f;
+                fd.friction = 0.2f;
+                fd.isSensor = true;
+                fd.filter.categoryBits = k_safe_zone_sensor_cat;
+                fd.filter.maskBits = k_safe_zone_sensor_mask;
+                bod->CreateFixture(&fd);
+
+
+                gm->gravity_area[gm->gravity_area_num].bod = bod;
+                gm->gravity_area[gm->gravity_area_num].dim.x = w;
+                gm->gravity_area[gm->gravity_area_num].dim.y = h;
+                gm->gravity_area[gm->gravity_area_num].whoami = t_gravity_area;
+                gm->gravity_area[gm->gravity_area_num].grav.x = 0;
+                gm->gravity_area[gm->gravity_area_num].grav.y = -100;
+                gm->gravity_area_num++;
             }
 
         }
@@ -2237,13 +2341,23 @@ void cl_person_person(game gm, actor_type * person1, actor_type * person2){
 void cl_safezone_person_begin(game gm, actor_type * person1, actor_type * person2){
     _safe_zone * safe_zone  = (_safe_zone*)person1;
     safe_zone->sensor_touch++;
-    printf("SZ-T: %d\n", safe_zone->sensor_touch);
+    //printf("SZ-T: %d\n", safe_zone->sensor_touch);
 }
 
 void cl_safezone_person_end(game gm, actor_type * person1, actor_type * person2){
     _safe_zone * safe_zone  = (_safe_zone*)person1;
     safe_zone->sensor_touch--;
-    printf("SZ-T: %d\n", safe_zone->sensor_touch);
+    //printf("SZ-T: %d\n", safe_zone->sensor_touch);
+}
+
+void cl_gravity_character_begin(game gm, actor_type * grav, actor_type * character){
+    character->grav.x = grav->grav.x;
+    character->grav.y = grav->grav.y;
+}
+
+void cl_gravity_character_end(game gm, actor_type * grav, actor_type * character){
+    character->grav.x = 0;
+    character->grav.y = 0;
 }
 
 void MyContactListener::BeginContact(b2Contact* contact)
@@ -2283,6 +2397,14 @@ void MyContactListener::BeginContact(b2Contact* contact)
         if(typeB->whoami == t_person && typeA->whoami == t_safezone){
             cl_safezone_person_begin(gm, typeA, typeB);
         }
+        if(typeB->whoami == t_gravity_area && 
+                (typeA->whoami == t_hero || typeA->whoami == t_person ) ){
+            cl_gravity_character_begin(gm, typeB, typeA);
+        }
+        if(typeA->whoami == t_gravity_area && 
+                (typeB->whoami == t_hero || typeB->whoami == t_person ) ){
+            cl_gravity_character_begin(gm, typeA, typeB);
+        }
     }
 }
 
@@ -2302,6 +2424,14 @@ void MyContactListener::EndContact(b2Contact* contact){
         }
         else if(typeB->whoami == t_person && typeA->whoami == t_safezone){
             cl_safezone_person_end(gm, typeA, typeB);
+        }
+        if(typeB->whoami == t_gravity_area && 
+                (typeA->whoami == t_hero || typeA->whoami == t_person ) ){
+            cl_gravity_character_end(gm, typeB, typeA);
+        }
+        if(typeA->whoami == t_gravity_area && 
+                (typeB->whoami == t_hero || typeB->whoami == t_person ) ){
+            cl_gravity_character_end(gm, typeA, typeB);
         }
     }
 }
