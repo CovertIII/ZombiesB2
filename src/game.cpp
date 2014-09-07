@@ -1744,7 +1744,7 @@ int gm_load_character(game gm, int type, b2Vec2 vel, b2Vec2 pos, mxml_node_t *no
         fd.shape = &polygon;
         fd.density = 0.04f;
         fd.restitution = 0.5f;
-        fd.friction = 0.2f;
+        fd.friction = 0.01f;
     }
 
 
@@ -1812,6 +1812,56 @@ int gm_load_character(game gm, int type, b2Vec2 vel, b2Vec2 pos, mxml_node_t *no
     bod->SetFixedRotation(fix_rotation);
     bod->SetLinearDamping(damping);
     bod->SetAngularDamping(damping);
+}
+
+int gm_load_gavity_area(game gm, b2Vec2 grav, mxml_node_t *node){
+    const char * name;
+
+    float x, y, h, w;
+    name = mxmlElementGetAttr(node, "x"); 
+    sscanf(name, "%f", &x);
+    name = mxmlElementGetAttr(node, "y"); 
+    sscanf(name, "%f", &y);
+    name = mxmlElementGetAttr(node, "height"); 
+    sscanf(name, "%f", &h);
+    name = mxmlElementGetAttr(node, "width"); 
+    sscanf(name, "%f", &w);
+
+    h *= 0.5;
+    w *= 0.5;
+    y = gm->h - y; 
+    x += w;
+    y -= h;
+
+
+    b2Vec2 pos(x,y);
+
+    b2BodyDef bd;
+    bd.position = pos;
+
+    b2Body * bod = gm->m_world->CreateBody(&bd);
+
+    b2PolygonShape polygon;
+    polygon.SetAsBox(w,h);
+
+    b2FixtureDef fd;
+    fd.shape = &polygon;
+    fd.userData = &gm->gravity_area[gm->gravity_area_num];
+    fd.density = 0.04f;
+    fd.restitution = 0.5f;
+    fd.friction = 0.2f;
+    fd.isSensor = true;
+    fd.filter.categoryBits = k_safe_zone_sensor_cat;
+    fd.filter.maskBits = k_safe_zone_sensor_mask;
+    bod->CreateFixture(&fd);
+
+
+    gm->gravity_area[gm->gravity_area_num].bod = bod;
+    gm->gravity_area[gm->gravity_area_num].dim.x = w;
+    gm->gravity_area[gm->gravity_area_num].dim.y = h;
+    gm->gravity_area[gm->gravity_area_num].whoami = t_gravity_area;
+    gm->gravity_area[gm->gravity_area_num].grav = grav;
+    gm->gravity_area_num++;
 }
 
 int gm_load_level_svg(game gm, char * file_path){
@@ -1916,9 +1966,8 @@ int gm_load_level_svg(game gm, char * file_path){
         {break;}
 
         if(strcmp(name, "rect") == 0){
-            float x, y, h, w;
-
             const char *color=mxmlElementGetAttr(node, "fill");
+            float x, y, h, w;
             name = mxmlElementGetAttr(node, "x"); 
             sscanf(name, "%f", &x);
             name = mxmlElementGetAttr(node, "y"); 
@@ -1933,8 +1982,6 @@ int gm_load_level_svg(game gm, char * file_path){
             y = gm->h - y; 
             x += w;
             y -= h;
-
-
             if(strcmp(color, "#00bf5f") == 0){
                 b2Vec2 pos(x,y);
                 b2Vec2 vel(0,0);
@@ -1943,35 +1990,8 @@ int gm_load_level_svg(game gm, char * file_path){
             }
             //Gravify area
             else if(strcmp(color, "#0000ff") == 0){
-                b2Vec2 pos(x,y);
-
-                b2BodyDef bd;
-                bd.position = pos;
-
-                b2Body * bod = gm->m_world->CreateBody(&bd);
-
-                b2PolygonShape polygon;
-                polygon.SetAsBox(w,h);
-
-                b2FixtureDef fd;
-                fd.shape = &polygon;
-                fd.userData = &gm->gravity_area[gm->gravity_area_num];
-                fd.density = 0.04f;
-                fd.restitution = 0.5f;
-                fd.friction = 0.2f;
-                fd.isSensor = true;
-                fd.filter.categoryBits = k_safe_zone_sensor_cat;
-                fd.filter.maskBits = k_safe_zone_sensor_mask;
-                bod->CreateFixture(&fd);
-
-
-                gm->gravity_area[gm->gravity_area_num].bod = bod;
-                gm->gravity_area[gm->gravity_area_num].dim.x = w;
-                gm->gravity_area[gm->gravity_area_num].dim.y = h;
-                gm->gravity_area[gm->gravity_area_num].whoami = t_gravity_area;
-                gm->gravity_area[gm->gravity_area_num].grav.x = 0;
-                gm->gravity_area[gm->gravity_area_num].grav.y = -100;
-                gm->gravity_area_num++;
+                b2Vec2 grav(0,-100);
+                gm_load_gavity_area(gm, grav, node);
             }
 
         }
@@ -2188,6 +2208,7 @@ int gm_load_level_svg(game gm, char * file_path){
 
             const char *color;
 
+            int shape_type;
             for(child = mxmlWalkNext(node, tree, MXML_DESCEND); child != NULL; child = mxmlGetNextSibling(child)){
                 name = mxmlGetElement(child);
                 while(name == NULL && child != NULL){
@@ -2198,6 +2219,7 @@ int gm_load_level_svg(game gm, char * file_path){
                 {break;}
 
                 if(strcmp(name, "circle") == 0){
+                    shape_type = t_circle;
                     char_node = child;
                     name = mxmlElementGetAttr(child, "cx"); 
                     sscanf(name, "%f", &cx);
@@ -2209,6 +2231,7 @@ int gm_load_level_svg(game gm, char * file_path){
                     color = mxmlElementGetAttr(child, "fill");
                 }
                 else if(strcmp(name, "rect") == 0){
+                    shape_type = t_rect;
                     char_node = child;
                     name = mxmlElementGetAttr(child, "x"); 
                     sscanf(name, "%f", &cx);
@@ -2256,6 +2279,10 @@ int gm_load_level_svg(game gm, char * file_path){
 
             else if(strcmp(color, "#ffff00") == 0){
                 gm_load_character(gm, t_person, vel, pos, char_node);
+            }
+            else if(strcmp(color, "#0000ff") == 0 && shape_type == t_rect){
+                b2Vec2 grav = 10*vel;
+                gm_load_gavity_area(gm, grav, char_node);
             }
         }        
       
@@ -2351,13 +2378,13 @@ void cl_safezone_person_end(game gm, actor_type * person1, actor_type * person2)
 }
 
 void cl_gravity_character_begin(game gm, actor_type * grav, actor_type * character){
-    character->grav.x = grav->grav.x;
-    character->grav.y = grav->grav.y;
+    character->grav.x += grav->grav.x;
+    character->grav.y += grav->grav.y;
 }
 
 void cl_gravity_character_end(game gm, actor_type * grav, actor_type * character){
-    character->grav.x = 0;
-    character->grav.y = 0;
+    character->grav.x -= grav->grav.x ;
+    character->grav.y -= grav->grav.y;
 }
 
 void MyContactListener::BeginContact(b2Contact* contact)
