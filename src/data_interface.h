@@ -32,3 +32,7 @@ void game_over(data_record db, int deaths);
 void stats_render_lvl(data_record db, char * lvl, int width, int height);
 
 int stats_render(data_record db, int width, int height);
+
+void game_start_session(data_record db);
+
+void game_end_session(data_record db);

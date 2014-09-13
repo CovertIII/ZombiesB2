@@ -196,7 +196,7 @@ typedef struct {
 	b2Body* bod;
 } _gravity_area; //actor_type
 
-typedef struct {
+struct ppl {
     int whoami;
     b2Vec2 grav;
 
@@ -213,8 +213,15 @@ typedef struct {
     int chase;
     int parent_id;
 
-	b2Body* bod;
-} ppl;
+    bool path_on;
+    AiPath * path;
+
+	b2Body * bod;
+    
+    ppl(){
+        path = NULL;
+    }
+};
 
 typedef struct {
     int whoami;
@@ -1133,6 +1140,37 @@ void gm_render(game gm){
 		glPopMatrix();
 		
 	}
+
+    /*
+	for(i=0; i<gm->person_num; i++){
+        if(gm->person[i].path != NULL){
+            int k = 0;
+            for(k=0; k<gm->person[i].path->p_num; k++){
+                if(k == gm->person[i].path->marker){
+                    glBindTexture( GL_TEXTURE_2D, gm->h_tex[gl_spike_ball]);
+                }else{
+                    glBindTexture( GL_TEXTURE_2D, gm->h_tex[gl_shield]);
+                }
+                b2Vec2 p = gm->person[i].path->p[k];
+                glPushMatrix();
+                glTranslatef(p.x, p.y, 0);
+                glRotatef(180/M_PI, 0, 0, 1);
+                glScalef(2,2,0);
+                glBegin(GL_QUADS);
+                glTexCoord2f(0.0, 0.0);
+                glVertex3f(-1.0, -1.0, 0.0);
+                glTexCoord2f(0.0, 1.0);
+                glVertex3f(-1.0, 1.0, 0.0);
+                glTexCoord2f(1.0, 1.0);
+                glVertex3f(1.0, 1.0, 0.0);
+                glTexCoord2f(1.0, 0.0);
+                glVertex3f(1.0, -1.0, 0.0);
+                glEnd();
+                glPopMatrix();
+            }
+        }
+    }
+    */
 }
 
 void gm_stats(game gm, double * time, int * people){
@@ -1315,6 +1353,12 @@ int gm_progress(game gm){
 }
 
 void gm_free(game gm){
+    int i;
+    for(i=0; i<gm->person_num; i++){
+        if(gm->person[i].path != NULL){
+            free(gm->person[i].path);
+        }
+    }     
 	free(gm);
 }
 
@@ -1433,6 +1477,12 @@ vector2 gm_dim(game gm){
 }
 
 void gm_free_level(game gm){
+    int i;
+    for(i=0; i<gm->person_num; i++){
+        if(gm->person[i].path != NULL){
+            free(gm->person[i].path);
+        }
+    }     
 	glDeleteTextures(1, &gm->bk);
 }
 
@@ -1632,6 +1682,22 @@ void ai_functions(game gm){
             ai_avoid(gm->hero.o.p, &gm->person[k].o, 200.0f);
         }
 		
+		if(gm->person[k].path != NULL){
+            vector2 target;
+            b2Vec2 b2target;
+            b2Vec2 pos;
+
+            pos.x = gm->person[k].o.p.x;
+            pos.y = gm->person[k].o.p.y;
+
+            gm->person[k].path->updatePath(pos);
+            b2target = gm->person[k].path->getTarget();
+            target.x = b2target.x;
+            target.y = b2target.y;
+
+            ai_seek(target, &gm->person[k].o, 0.7f, 20.0f);
+        }
+
 		if(gm->person[k].state == ZOMBIE && gm->person[k].parent_id >= 0){
             //ai_chase(&gm->hero.o, &gm->person[k].o, 70.0f, 30.0f);
             ai_seek(gm->person[gm->person[k].parent_id].o.p, &gm->person[k].o, 2.1f, 20);
@@ -1654,7 +1720,7 @@ void gm_portal_ct(game gm, int user_id){
     sqlite3_stmt * sql;
     const char * extra;
     char stmt[150];
-    sprintf(stmt, "SELECT level_id, MAX(people_saved) mp FROM level_stats  WHERE user_id = %d GROUP BY level_id;", user_id);
+    sprintf(stmt, "SELECT level_id, MAX(people_saved) mp FROM level_stats  WHERE user_id = %d AND complete = 1 GROUP BY level_id;", user_id);
     printf("%s\n", stmt);
     int result; 
     printf("db_path %s\n", gm->db_path);
@@ -1678,7 +1744,7 @@ void gm_portal_ct(game gm, int user_id){
     sqlite3_close(sdb);   
 }
 
-int gm_load_character(game gm, int type, b2Vec2 vel, b2Vec2 pos, mxml_node_t *node){
+int gm_load_character(game gm, int type, b2Vec2 vel, b2Vec2 pos, mxml_node_t *node, AiPath * path){
     bool fix_rotation = false;
     float damping = 1;
     int num = gm->person_num;
@@ -1803,6 +1869,7 @@ int gm_load_character(game gm, int type, b2Vec2 vel, b2Vec2 pos, mxml_node_t *no
             gm->person[num].chase = 0;
             gm->person[num].parent_id = -1;
             gm->person[num].o.snd = 0;
+            gm->person[num].path = path;
             gm->person_num++;
             break;
 
@@ -1986,7 +2053,7 @@ int gm_load_level_svg(game gm, char * file_path){
                 b2Vec2 pos(x,y);
                 b2Vec2 vel(0,0);
 
-                gm_load_character(gm, t_zombie, vel, pos, node);
+                gm_load_character(gm, t_zombie, vel, pos, node, NULL);
             }
             //Gravify area
             else if(strcmp(color, "#0000ff") == 0){
@@ -2055,25 +2122,25 @@ int gm_load_level_svg(game gm, char * file_path){
                 b2Vec2 pos(cx,cy);
                 b2Vec2 vel(0,0);
 
-                gm_load_character(gm, t_hero, vel, pos, node);
+                gm_load_character(gm, t_hero, vel, pos, node, NULL);
             }
             else if(strcmp(color, "#00bf5f") == 0){
                 b2Vec2 pos(cx,cy);
                 b2Vec2 vel(0,0);
 
-                gm_load_character(gm, t_zombie, vel, pos, node);
+                gm_load_character(gm, t_zombie, vel, pos, node, NULL);
             }
             else if(strcmp(color, "#ffff00") == 0){
 				int num = gm->person_num;
                 b2Vec2 pos(cx,cy);
                 b2Vec2 vel(0,0);
 
-                gm_load_character(gm, t_person, vel, pos, node);
+                gm_load_character(gm, t_person, vel, pos, node, NULL);
             }
             else if(strcmp(color, "#999999") == 0){
                 b2Vec2 pos(cx,cy);
                 b2Vec2 vel(0,0);
-                gm_load_character(gm, t_spike, vel, pos, node);
+                gm_load_character(gm, t_spike, vel, pos, node, NULL);
             }
         }
         else if(strcmp(name, "line") == 0){
@@ -2198,13 +2265,14 @@ int gm_load_level_svg(game gm, char * file_path){
         else if(strcmp(name, "g") == 0){
             mxml_node_t * child;
             mxml_node_t * char_node;
+            AiPath * path = NULL;
 
             float cx;
             float cy;
             float r;
             float vx, vy;
 
-            float x1, x2, y1, y2;
+            float x1 = 0, x2 = 0, y1 = 0, y2 = 0;
 
             const char *color;
 
@@ -2242,6 +2310,12 @@ int gm_load_level_svg(game gm, char * file_path){
                     cy = gm->h - cy; 
                     color = mxmlElementGetAttr(child, "fill");
                 }
+                else if(strcmp(name, "path") == 0){
+                    const char * d;
+                    path = (AiPath*)malloc(sizeof(AiPath));
+                    d = mxmlElementGetAttr(child, "d"); 
+                    path->parsePath(d, gm->h);
+                }
                 else if(strcmp(name, "line") == 0){
                     name = mxmlElementGetAttr(child, "x1"); 
                     sscanf(name, "%f", &x1);
@@ -2271,17 +2345,17 @@ int gm_load_level_svg(game gm, char * file_path){
 			
             
             if(strcmp(color, "#ff0000") == 0 || strcmp(color, "#FF0000") == 0){
-                gm_load_character(gm, t_hero, vel, pos, char_node);
+                gm_load_character(gm, t_hero, vel, pos, char_node, path);
             }
             else if(strcmp(color, "#00bf5f") == 0){
-                gm_load_character(gm, t_zombie, vel, pos, char_node);
+                gm_load_character(gm, t_zombie, vel, pos, char_node, path);
             }
 
             else if(strcmp(color, "#ffff00") == 0){
-                gm_load_character(gm, t_person, vel, pos, char_node);
+                gm_load_character(gm, t_person, vel, pos, char_node, path);
             }
             else if(strcmp(color, "#0000ff") == 0 && shape_type == t_rect){
-                b2Vec2 grav = 10*vel;
+                b2Vec2 grav = vel;
                 gm_load_gavity_area(gm, grav, char_node);
             }
         }        

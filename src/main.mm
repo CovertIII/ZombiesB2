@@ -178,6 +178,9 @@ static void createSurface (int fullscreen, int width, int height)
 }
 
 void cleanup (void) {
+	if(level_test != 1){
+        game_end_session(stats);
+    }
 	gm_free(gm);
 
 	context = alcGetCurrentContext();
@@ -185,6 +188,7 @@ void cleanup (void) {
 	alcMakeContextCurrent(NULL);
 	alcDestroyContext(context);
 	alcCloseDevice(device);
+    printf("Zombies says bye\n");
 }
 
 void init(int argc, char** argv){
@@ -290,6 +294,7 @@ if(argc == 1){
 		strcat(res_buf, level);
 		gm_load_level_svg(gm, res_buf);
 		level_test = 0;
+        game_start_session(stats);
 	}
 	if(argc == 2){
 		argv1 = argv[1];
@@ -315,7 +320,7 @@ if(argc == 1){
   al_stream_load_file(als, res_buf);
   al_stream_play(als);
 
-	atexit(cleanup);
+    atexit(cleanup);
 }
 
 void reset(int width, int height){

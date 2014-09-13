@@ -541,6 +541,29 @@ void game_start_session(data_record db){
     sqlite3_close(sdb);
 }
 
+void game_end_session(data_record db){
+    sqlite3 * sdb;
+    sqlite3_stmt * sql;
+    const char * extra;
+    char stmt[200];
+    sprintf(stmt,
+            "UPDATE game_session SET date_time_end = '%d' WHERE id = '%d';",
+            (int)time(NULL),
+            db->game_id
+           );
+    printf("%s\n", stmt);
+    int result; 
+    result = sqlite3_open(db->file_name, &sdb);
+    printf("game_st Open result: %d\n", result);
+    result = sqlite3_prepare_v2(sdb, stmt, sizeof(stmt) + 1 , &sql, &extra);
+    printf("prepare result: %d\n", result);
+    result = sqlite3_step(sql);
+    printf("Step result: %d\n", result);
+    db->game_id = sqlite3_last_insert_rowid(sdb);
+    sqlite3_finalize(sql);
+    sqlite3_close(sdb);
+}
+
 
 void game_over(data_record db, int deaths){
     sqlite3 * sdb;
@@ -611,7 +634,7 @@ int db_get_save_count(data_record db){
     sprintf(stmt, "SELECT SUM(A.mp) as cur_ct FROM "
                      "(SELECT MAX(people_saved) mp, level_id"
                      " FROM level_stats "
-                     " WHERE user_id = %d"
+                     " WHERE user_id = %d AND complete = 1"
                      " GROUP BY level_id) as A;", db->user_id);
     printf("%s\n", stmt);
     result = sqlite3_open(db->file_name, &sdb);
@@ -690,7 +713,8 @@ void game_record_lvl_stats(data_record db, char * lvl, double time_lvl, int extr
                  "datetime,"
                  "user_id,"
                  "people_saved,"
-                 "complete) VALUES (0 , '%s', '%f','%d','%d','%d','%d');",
+                 "complete) VALUES ('%d' , '%s', '%f','%d','%d','%d','%d');",
+            db->game_id,
             lvl,
             time_lvl,
             (int)time(NULL),
