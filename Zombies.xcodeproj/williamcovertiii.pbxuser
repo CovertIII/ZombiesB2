@@ -297,6 +297,7 @@
 			7A35A1CD19C3FB7A00D2BA29 /* XCBuildMessageTextBookmark */ = 7A35A1CD19C3FB7A00D2BA29 /* XCBuildMessageTextBookmark */;
 			7A35A1CE19C3FB7A00D2BA29 /* PBXTextBookmark */ = 7A35A1CE19C3FB7A00D2BA29 /* PBXTextBookmark */;
 			7A35A1D319C3FBAA00D2BA29 /* PBXTextBookmark */ = 7A35A1D319C3FBAA00D2BA29 /* PBXTextBookmark */;
+			7A35A1D719C4AD8D00D2BA29 /* PBXTextBookmark */ = 7A35A1D719C4AD8D00D2BA29 /* PBXTextBookmark */;
 			7A5AAC43145346F500BE4B3C = 7A5AAC43145346F500BE4B3C /* PBXBookmark */;
 			7A72AEFE141F9975001EB26D = 7A72AEFE141F9975001EB26D /* PBXTextBookmark */;
 			7A74012D1719C6A000F4545D = 7A74012D1719C6A000F4545D /* PBXTextBookmark */;
@@ -361,8 +362,8 @@
 	};
 	7A092A3E170A295B0076FEAB /* game.cpp */ = {
 		uiCtxt = {
-			sepNavIntBoundsRect = "{{0, 0}, {851, 34684}}";
-			sepNavSelRange = "{4681, 0}";
+			sepNavIntBoundsRect = "{{0, 0}, {851, 34697}}";
+			sepNavSelRange = "{74838, 0}";
 			sepNavVisRange = "{4331, 386}";
 		};
 	};
@@ -1567,6 +1568,16 @@
 		name = "game.cpp: 224";
 		rLen = 0;
 		rLoc = 4681;
+		rType = 0;
+		vrLen = 386;
+		vrLoc = 4331;
+	};
+	7A35A1D719C4AD8D00D2BA29 /* PBXTextBookmark */ = {
+		isa = PBXTextBookmark;
+		fRef = 7A092A3E170A295B0076FEAB /* game.cpp */;
+		name = "game.cpp: 2588";
+		rLen = 0;
+		rLoc = 74838;
 		rType = 0;
 		vrLen = 386;
 		vrLoc = 4331;
