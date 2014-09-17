@@ -30,6 +30,7 @@
 #include "sound_list.h"
 #include "ai.h"
 #include "game.h"
+#include "chain.h"
 
 
 #define ZOMBIE 0
@@ -40,7 +41,7 @@
 #define DONE 5
 #define SPIKE 6
 
-#define STINK_PARTICLE_NUM 6 
+#define STINK_PARTICLE_NUM 2
 
 //Different Emotional states
 #define NORMAL 0
@@ -253,20 +254,6 @@ typedef struct {
 
 
 typedef struct {
-    int num;
-    int ppl[100];
-    b2Body * links[100];
-    b2Joint * jt[100];
-
-    int make_q[100];
-    int qnum;
-
-    b2Body * delete_q[100];
-    int dnum;
-} _chain;
-
-
-typedef struct {
     object n[STINK_PARTICLE_NUM];
     double time[STINK_PARTICLE_NUM];
     int id;
@@ -298,7 +285,7 @@ typedef struct gametype {
     int c; //Varibale to keep track if the c key is being pressed down.
 	
 	double h,w; //Height and width of the level
-	ppl person[100]; //Zombies and people array
+	ppl person[255]; //Zombies and people array
 	int person_num; //How many there are
 	_hero hero;
 
@@ -306,7 +293,7 @@ typedef struct gametype {
     _gravity_area gravity_area[100];
 
     //Keeps track of who is in the hero chain
-    _chain chain;
+    Chain chain;
 
 	_safe_zone safe_zone;
 	int save_count;  //How many people you have to save to win the level
@@ -366,9 +353,6 @@ typedef struct gametype {
 
 MyContactListener CL;
 
-void chain_remove(game gm, int index);
-void chain_ready_zero(game gm);
-void chain_cut(game gm, int index);
 void stink_add(game gm, int id);
 void stink_step(game gm, double dt);
 void stink_render(game gm);
@@ -705,9 +689,24 @@ void gm_update(game gm, int width, int height, double dt){
 
 
     //Box2d stuff
+    double msd = v2Len(v2Sub(gm->hero.o.p, gm->ms));
+    vector2 msu = v2Unit(v2Sub(gm->hero.o.p, gm->ms));
+	
     float hf = (gm->n)?300:100;
+    vector2 msf = v2sMul(-1*hf, msu);
 
-	b2Vec2 f(gm->ak.x*hf, gm->ak.y*hf);
+    if(msd < gm->hero.o.r){
+        msf.x = 0;
+        msf.y = 0;
+    }
+
+	if(!gm->m){
+		msf.x = 0;
+		msf.y = 0;	
+	}
+
+
+	b2Vec2 f(gm->ak.x*hf + msf.x, gm->ak.y*hf + msf.y);
 	b2Vec2 p = gm->hero.bod->GetPosition();
 
     f.x += gm->hero.grav.x;
@@ -736,82 +735,7 @@ void gm_update(game gm, int width, int height, double dt){
 	gm->m_world->Step(dt, 8, 3);
 
     //CHeck for joints to create
-    for(i = 0; i < gm->chain.qnum; i++){
-        int num = gm->chain.make_q[i];
-
-        b2DistanceJointDef jd;
-
-        jd.frequencyHz = 10.0f;
-        jd.dampingRatio = 0.5f;
-
-
-        if(gm->chain.num > 1){
-            b2Body * plink = gm->chain.links[gm->chain.num-2];
-            b2Joint * djoint = NULL;
-            b2JointEdge * list;
-            for(list = plink->GetJointList(); list != NULL; list = list->next){
-                if(list->other == gm->hero.bod){
-                    djoint = list->joint;
-                }
-            }
-            gm->m_world->DestroyJoint(djoint);
-
-            jd.bodyA = plink;
-            jd.bodyB = gm->person[num].bod;
-            jd.localAnchorA.Set(-3.0f, 0.0f);
-            jd.localAnchorB.Set(0.0f, 0.0f);
-            jd.bodyA->GetWorldPoint(jd.localAnchorA);
-            jd.bodyB->GetWorldPoint(jd.localAnchorB);
-            jd.length = 0;
-            gm->m_world->CreateJoint(&jd);
-
-        }
-
-        b2Vec2 p1, p2;
-        p1 = gm->hero.bod->GetPosition();
-        p2 = gm->person[num].bod->GetPosition();
-
-        b2PolygonShape shape;
-        shape.SetAsBox(3.0f, 0.2f);
-
-        b2FixtureDef fd;
-        fd.shape = &shape;
-        fd.density = 0.1f;
-        fd.friction = 0.2f;
-        fd.filter.categoryBits = k_hero_cat;
-        fd.filter.maskBits = k_hero_mask;
-
-        b2BodyDef bd;
-        bd.type = b2_dynamicBody;
-        bd.position.Set((p2.x - p1.x)/2.0f+p1.x, (p2.y - p1.y)/2.0f+p1.y);
-        b2Body * link = gm->m_world->CreateBody(&bd);
-        gm->chain.links[gm->chain.num-1] = link;
-        link->CreateFixture(&fd);
-
-
-        jd.bodyA = gm->hero.bod;
-        jd.bodyB = link;
-        jd.localAnchorA.Set(0.0f, 0.0f);
-        jd.localAnchorB.Set(-3.2f, 0.0f);
-        p1 = jd.bodyA->GetWorldPoint(jd.localAnchorA);
-        p2 = jd.bodyB->GetWorldPoint(jd.localAnchorB);
-        jd.length = 0.0f;
-        gm->m_world->CreateJoint(&jd);
-
-        jd.bodyA = link;
-        jd.bodyB = gm->person[num].bod;
-        jd.localAnchorA.Set(3.0f, 0.0f);
-        jd.localAnchorB.Set(0.0f, 0.0f);
-        p1 = jd.bodyA->GetWorldPoint(jd.localAnchorA);
-        p2 = jd.bodyB->GetWorldPoint(jd.localAnchorB);
-        jd.length = 0;
-        gm->m_world->CreateJoint(&jd);
-    }
-
-    //Check for joints to destroy
-    for(i = 0; i < gm->chain.dnum; i++){
-      gm->m_world->DestroyBody(gm->chain.delete_q[i]);
-    }
+    chain_update(gm);
 
 
     //Check to see if safe zone sensor is active
@@ -838,7 +762,9 @@ void gm_update(game gm, int width, int height, double dt){
                             else {
                                 s_add_snd(gm->saved_src, gm->buf[al_saved2_buf], &person->o,1, 1);
                             }
-                            
+
+                            int index = person - gm->person;
+                            chain_remove(gm, index);
 						}
 					}
 					else if(person->state == P_Z || person->state == ZOMBIE){
@@ -864,6 +790,11 @@ void gm_update(game gm, int width, int height, double dt){
             SensorContact = SensorContact->next;
         }
 
+    }
+
+    //Check for joints to destroy
+    for(i = 0; i < gm->chain.dnum; i++){
+      gm->m_world->DestroyBody(gm->chain.delete_q[i]);
     }
 	
 	/*Advances our view box when zooming in and out */
@@ -1357,6 +1288,7 @@ void gm_free(game gm){
     for(i=0; i<gm->person_num; i++){
         if(gm->person[i].path != NULL){
             free(gm->person[i].path);
+            gm->person[i].path = NULL;
         }
     }     
 	free(gm);
@@ -1365,6 +1297,21 @@ void gm_free(game gm){
 void gm_mouse(game gm, int x, int y){
 	gm->mpx = x;
 	gm->mpy = y;
+}
+
+void gm_mouse_down(game gm, int x, int y){
+	gm->mpx = x;
+	gm->mpy = y;
+
+    chain_ready_zero(gm);
+    gm->c = 1;
+    gm->hero.spring_state = NOT_ATTACHED;
+}
+
+void gm_mouse_up(game gm, int x, int y){
+	gm->mpx = x;
+	gm->mpy = y;
+    gm->c = 0;
 }
 
 b2Vec2 gm_get_hero(game gm){
@@ -1516,19 +1463,173 @@ void gm_check_portals(game gm, int save_count){
     }
 }
 
+void chain_update(game gm){
+    int i;
+    for(i = 0; i < gm->chain.qnum; i++){
+        int num = gm->chain.make_q[i];
+
+        b2DistanceJointDef jd;
+
+        jd.frequencyHz = 10.0f;
+        jd.dampingRatio = 0.5f;
+
+
+        if(gm->chain.num > 1){
+            b2Body * plink = gm->chain.links[gm->chain.num-2];
+            b2Joint * djoint = NULL;
+            b2JointEdge * list;
+            for(list = plink->GetJointList(); list != NULL; list = list->next){
+                if(list->other == gm->hero.bod){
+                    djoint = list->joint;
+                }
+            }
+            gm->m_world->DestroyJoint(djoint);
+
+            jd.bodyA = plink;
+            jd.bodyB = gm->person[num].bod;
+            jd.localAnchorA.Set(-3.0f, 0.0f);
+            jd.localAnchorB.Set(0.0f, 0.0f);
+            jd.bodyA->GetWorldPoint(jd.localAnchorA);
+            jd.bodyB->GetWorldPoint(jd.localAnchorB);
+            jd.length = 0;
+            gm->m_world->CreateJoint(&jd);
+
+        }
+
+        b2Vec2 p1, p2;
+        p1 = gm->hero.bod->GetPosition();
+        p2 = gm->person[num].bod->GetPosition();
+
+        b2PolygonShape shape;
+        shape.SetAsBox(3.0f, 0.2f);
+
+        b2FixtureDef fd;
+        fd.shape = &shape;
+        fd.density = 0.1f;
+        fd.friction = 0.2f;
+        fd.filter.categoryBits = k_hero_cat;
+        fd.filter.maskBits = k_hero_mask;
+
+        b2BodyDef bd;
+        bd.type = b2_dynamicBody;
+        bd.position.Set((p2.x - p1.x)/2.0f+p1.x, (p2.y - p1.y)/2.0f+p1.y);
+        b2Body * link = gm->m_world->CreateBody(&bd);
+        gm->chain.links[gm->chain.num-1] = link;
+        link->CreateFixture(&fd);
+
+
+        jd.bodyA = gm->hero.bod;
+        jd.bodyB = link;
+        jd.localAnchorA.Set(0.0f, 0.0f);
+        jd.localAnchorB.Set(-3.2f, 0.0f);
+        p1 = jd.bodyA->GetWorldPoint(jd.localAnchorA);
+        p2 = jd.bodyB->GetWorldPoint(jd.localAnchorB);
+        jd.length = 0.0f;
+        gm->m_world->CreateJoint(&jd);
+
+        jd.bodyA = link;
+        jd.bodyB = gm->person[num].bod;
+        jd.localAnchorA.Set(3.0f, 0.0f);
+        jd.localAnchorB.Set(0.0f, 0.0f);
+        p1 = jd.bodyA->GetWorldPoint(jd.localAnchorA);
+        p2 = jd.bodyB->GetWorldPoint(jd.localAnchorB);
+        jd.length = 0;
+        gm->m_world->CreateJoint(&jd);
+    }
+
+}
+
 void chain_remove(game gm, int index){
 	int k;
-	int match;
+	int match = -1;
 	for(k = 0; k < gm->chain.num; k++){
 		if(gm->chain.ppl[k] == index){
 			match = k;
 			break;
 		}
 	}
+	if(match == -1){
+		return;
+	}
+
+    printf("C RM Index: %d chain index: %d\n", index, match);
+
+
+    gm->chain.delete_q[gm->chain.dnum] = gm->chain.links[match];
+    gm->chain.links[match] = NULL;
+    gm->chain.dnum++;
+
+
 	for(k = match; k < gm->chain.num; k++){
 		gm->chain.ppl[k] = gm->chain.ppl[k+1];
+		gm->chain.links[k] = gm->chain.links[k+1];
 	}
-	gm->chain.num--;
+
+    gm->chain.num--;
+
+
+    if(match > 0){
+        gm->m_world->DestroyBody(gm->chain.links[match-1]);
+
+        b2DistanceJointDef jd;
+
+        jd.frequencyHz = 10.0f;
+        jd.dampingRatio = 0.5f;
+
+        b2Vec2 p1, p2;
+        if(match == gm->chain.num){
+            p1 = gm->hero.bod->GetPosition();
+        }
+        else{
+            //Remember we've delete our the guy in our chain so the next guy up is now match
+            p1 = gm->person[gm->chain.ppl[match]].bod->GetPosition();
+        }
+
+        p2 = gm->person[gm->chain.ppl[match-1]].bod->GetPosition();
+
+        b2PolygonShape shape;
+        shape.SetAsBox(3.0f, 0.2f);
+
+        b2FixtureDef fd;
+        fd.shape = &shape;
+        fd.density = 0.1f;
+        fd.friction = 0.2f;
+        fd.filter.categoryBits = k_hero_cat;
+        fd.filter.maskBits = k_hero_mask;
+
+        b2BodyDef bd;
+        bd.type = b2_dynamicBody;
+        bd.position.Set((p2.x - p1.x)/2.0f+p1.x, (p2.y - p1.y)/2.0f+p1.y);
+        b2Body * link = gm->m_world->CreateBody(&bd);
+        gm->chain.links[match-1] = link;
+        link->CreateFixture(&fd);
+
+
+        if(match == gm->chain.num){
+            jd.bodyA = gm->hero.bod;
+        }
+        else{
+            jd.bodyA = gm->person[gm->chain.ppl[match]].bod;
+        }
+        jd.bodyB = link;
+        jd.localAnchorA.Set(0.0f, 0.0f);
+        jd.localAnchorB.Set(-3.2f, 0.0f);
+        p1 = jd.bodyA->GetWorldPoint(jd.localAnchorA);
+        p2 = jd.bodyB->GetWorldPoint(jd.localAnchorB);
+        jd.length = 0.0f;
+        gm->m_world->CreateJoint(&jd);
+
+        jd.bodyA = link;
+        jd.bodyB = gm->person[gm->chain.ppl[match-1]].bod;
+        jd.localAnchorA.Set(3.0f, 0.0f);
+        jd.localAnchorB.Set(0.0f, 0.0f);
+        p1 = jd.bodyA->GetWorldPoint(jd.localAnchorA);
+        p2 = jd.bodyB->GetWorldPoint(jd.localAnchorB);
+        jd.length = 0;
+        gm->m_world->CreateJoint(&jd); 
+    }
+
+
 }
 
 void chain_cut(game gm, int index){

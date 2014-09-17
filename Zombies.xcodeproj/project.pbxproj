@@ -127,6 +127,7 @@
 		7A9A2A9E15DFC4B00094B3C6 /* main.mm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.objcpp; name = main.mm; path = src/main.mm; sourceTree = "<group>"; };
 		7A9A2A9F15DFC4B00094B3C6 /* physics.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = physics.cpp; path = src/physics.cpp; sourceTree = "<group>"; };
 		7A9A2AA015DFC4B00094B3C6 /* physics.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = physics.h; path = src/physics.h; sourceTree = "<group>"; };
+		7A9F36EA19C906F000D72ACF /* chain.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = chain.h; path = src/chain.h; sourceTree = "<group>"; };
 		7AA33AF514146C1300C09ED8 /* Zombie.icns */ = {isa = PBXFileReference; lastKnownFileType = image.icns; path = Zombie.icns; sourceTree = "<group>"; };
 		7AA9A38A14811C040075F1FB /* libfreetype.6.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; name = libfreetype.6.dylib; path = libs/libfreetype.6.dylib; sourceTree = "<group>"; };
 		7AC1F3A61413002A0086E03C /* OpenAL.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = OpenAL.framework; path = Library/Frameworks/OpenAL.framework; sourceTree = SDKROOT; };
@@ -228,6 +229,7 @@
 		29B97315FDCFA39411CA2CEA /* Other Sources */ = {
 			isa = PBXGroup;
 			children = (
+				7A9F36EA19C906F000D72ACF /* chain.h */,
 				7A9A2A8415DFC49B0094B3C6 /* sound_list.cpp */,
 				7A9A2A8515DFC49B0094B3C6 /* sound_list.h */,
 				7A9A2A8615DFC49B0094B3C6 /* stream_sound.cpp */,

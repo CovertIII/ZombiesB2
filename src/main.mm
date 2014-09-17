@@ -284,7 +284,7 @@ if(argc == 1){
 	if(argc == 1){
 		srand(time(NULL));
 		gm_lvl = 8;
-        gm_free_level(gm);
+        //gm_free_level(gm);
         strcpy(res_buf, res_path);
         sprintf(level, "/lvl/bk.png", gm_lvl);
         strcat(res_buf, level);
@@ -298,7 +298,7 @@ if(argc == 1){
 	}
 	if(argc == 2){
 		argv1 = argv[1];
-        gm_free_level(gm);
+        //gm_free_level(gm);
         char bk[400];
         strcpy(bk, argv1);
         strcat(bk, ".png");
@@ -867,7 +867,10 @@ static void mainLoop ()
                     gm_mouse(gm, event.button.x, windowHeight - event.button.y);
 					break;
 				case SDL_MOUSEBUTTONDOWN:
-                   gm_mouse(gm, event.button.x, windowHeight - event.button.y);
+                   gm_mouse_down(gm, event.button.x, windowHeight - event.button.y);
+				   break;
+				case SDL_MOUSEBUTTONUP:
+                   gm_mouse_up(gm, event.button.x, windowHeight - event.button.y);
 				   break;
 				case SDL_KEYDOWN:
                     processNormalKeys(event.key.keysym.sym);
